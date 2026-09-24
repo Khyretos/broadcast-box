@@ -10,13 +10,13 @@ import {
 import {
 	ChatBubbleLeftRightIcon,
 	FaceSmileIcon,
-	HeartIcon,
 	PencilSquareIcon,
 	PaperAirplaneIcon,
 } from "@heroicons/react/24/outline";
-import { EmoteMap, useEmotes, Emote } from "../../../hooks/useEmotes";
-import EmojiPicker from "./EmojiPicker";
-import { REACTION_EMOJIS } from "../functions/reactions";
+import { Emote, EmoteMap, StreamEmotes, isAllowedGifUrl, useEmotes } from "../../../hooks/useEmotes";
+import MediaPicker from "./MediaPicker";
+import { Reaction, loadSelectedReaction, saveSelectedReaction } from "../functions/reactions";
+import { RecentItem, recordUse } from "../functions/recentItems";
 import {
 	ChatAdapter,
 	ChatStatus,
@@ -35,9 +35,15 @@ interface ChatPanelProps {
 	isOpen: boolean;
 	adapter?: ChatAdapter;
 	displayName?: string;
-	onReaction?: (emoji: string) => void;
+	onReaction?: (reaction: Reaction) => void;
 	onChangeDisplayNameRequested?: () => void;
 }
+
+// Holding the reaction button this long opens the reaction picker
+const REACTION_HOLD_MS = 150;
+
+// Emotes one message may carry, matches the server limit
+const MAX_MESSAGE_EMOTES = 20;
 
 const getNameColor = (displayName: string) => {
 	let hash = 0;
@@ -48,33 +54,54 @@ const getNameColor = (displayName: string) => {
 	return `hsl(${Math.abs(hash) % 360}, 70%, 60%)`;
 };
 
-// Replaces words matching a 7TV/BTTV/FFZ emote code with the emote image
-const renderMessageText = (text: string, emotes: EmoteMap) => {
-	if (emotes.size === 0) {
-		return text;
+const ChatGif = (props: { url: string }) => {
+	const [failed, setFailed] = useState(false);
+	if (failed) {
+		return <a href={props.url} target="_blank" rel="noopener noreferrer nofollow" className="break-all text-blue-300 underline">{props.url}</a>;
+	}
+	return (
+		<img
+			src={props.url}
+			alt=""
+			loading="lazy"
+			referrerPolicy="no-referrer"
+			onError={() => setFailed(true)}
+			className="my-1 block max-h-40 max-w-full rounded"
+		/>
+	);
+};
+
+// Replaces emote codes with emote images and allowed GIF links with the GIF
+const renderMessageText = (message: Message, emotes: EmoteMap, gifHosts: string[]) => {
+	if (emotes.size === 0 && !message.emotes && gifHosts.length === 0) {
+		return message.text;
 	}
 
-	return text.split(/(\s+)/).map((word, index) => {
-		const emote = emotes.get(word);
-		if (!emote) {
-			return word;
+	return message.text.split(/(\s+)/).map((word, index) => {
+		const url = message.emotes?.[word] ?? emotes.get(word)?.url;
+		if (url && url.startsWith("https://")) {
+			const emote = emotes.get(word);
+			return (
+				<img
+					key={index}
+					src={url}
+					srcSet={emote?.url === url && emote.url2x ? `${emote.url} 1x, ${emote.url2x} 2x` : undefined}
+					alt={word}
+					title={word}
+					loading="lazy"
+					className="-my-1 inline-block h-7 w-auto align-middle"
+				/>
+			);
 		}
-		return (
-			<img
-				key={index}
-				src={emote.url}
-				srcSet={emote.url2x ? `${emote.url} 1x, ${emote.url2x} 2x` : undefined}
-				alt={emote.code}
-				title={emote.code}
-				loading="lazy"
-				className="-my-1 inline-block h-7 w-auto align-middle"
-			/>
-		);
+		if (isAllowedGifUrl(word, gifHosts)) {
+			return <ChatGif key={index} url={word} />;
+		}
+		return word;
 	});
 };
 
-const ChatMessage = memo(function ChatMessage(props: { message: Message; emotes: EmoteMap }) {
-	const { message, emotes } = props;
+const ChatMessage = memo(function ChatMessage(props: { message: Message; emotes: EmoteMap; gifHosts: string[] }) {
+	const { message, emotes, gifHosts } = props;
 	const timestamp = new Date(message.ts).toLocaleTimeString([], {
 		hour: "2-digit",
 		minute: "2-digit",
@@ -91,21 +118,25 @@ const ChatMessage = memo(function ChatMessage(props: { message: Message; emotes:
 				</span>
 				<span className="text-gray-400">{timestamp}</span>
 			</div>
-			<p className="mt-1 break-words text-sm text-gray-100">{renderMessageText(message.text, emotes)}</p>
+			<p className="mt-1 break-words text-sm text-gray-100">{renderMessageText(message, emotes, gifHosts)}</p>
 		</div>
 	);
 });
 
+const ReactionPreview = (props: { reaction: Reaction }) => props.reaction.emote
+	? <img src={props.reaction.emote.url} alt={props.reaction.emote.code} className="max-h-6 max-w-7 object-contain" />
+	: <span className="text-xl leading-none">{props.reaction.emoji}</span>;
+
 interface ChatComposerProps {
 	status: ChatStatus;
 	isSending: boolean;
-	emotes: Emote[];
+	emotes: StreamEmotes;
 	onNameRequested(): void;
-	onReaction?: (emoji: string) => void;
-	onSend(text: string): Promise<boolean>;
+	onReaction?: (reaction: Reaction) => void;
+	onSend(text: string, emotes: Record<string, string>): Promise<boolean>;
 	locale: {
 		placeholder_input: string;
-		button_reaction_title: string;
+		button_reaction_hold_hint: string;
 		button_change_display_name_title: string;
 		button_send_title: string;
 		button_emoji_title: string;
@@ -115,22 +146,27 @@ interface ChatComposerProps {
 const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
 	const { status, isSending, emotes, onNameRequested, onReaction, onSend, locale } = props;
 	const [text, setText] = useState("");
-	const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
-	const [isReactionPickerOpen, setIsReactionPickerOpen] = useState(false);
+	const [picker, setPicker] = useState<"chat" | "reaction">();
+	const [reaction, setReaction] = useState<Reaction>(loadSelectedReaction);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const composerRef = useRef<HTMLFormElement>(null);
-	const closeEmojiPicker = useCallback(() => setIsEmojiPickerOpen(false), []);
+	// Emotes picked from search, which other viewers may not have loaded
+	const pickedEmotesRef = useRef(new Map<string, Emote>());
+	const holdTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	const pressRef = useRef<"idle" | "pressed" | "held">("idle");
+	const closePicker = useCallback(() => setPicker(undefined), []);
+	const canSend =
+		text.trim().length > 0 && !isSending && status === "connected";
 
-	// Inserts at the cursor, with spaces around emote codes so they are recognised
-	const insertText = (value: string) => {
+	// Inserts at the cursor, with spaces around emote codes and links so they are recognised
+	const insertText = (value: string, isWord: boolean) => {
 		const input = inputRef.current;
 		const selectionStart = input?.selectionStart ?? text.length;
 		const selectionEnd = input?.selectionEnd ?? text.length;
 		const before = text.slice(0, selectionStart);
 		const after = text.slice(selectionEnd);
-		const isEmote = /^[\x21-\x7e]+$/.test(value);
-		const insert = isEmote
-			? `${before && !before.endsWith(" ") ? " " : ""}${value}${after.startsWith(" ") ? "" : " "}`
+		const insert = isWord
+			? `${before && !/\s$/.test(before) ? " " : ""}${value}${/^\s/.test(after) ? "" : " "}`
 			: value;
 		const next = (before + insert + after).slice(0, 2000);
 		setText(next);
@@ -141,21 +177,98 @@ const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
 			input?.setSelectionRange(caret, caret);
 		});
 	};
-	const canSend =
-		text.trim().length > 0 && !isSending && status === "connected";
+
+	const onPick = (item: RecentItem) => {
+		// GIFs are counted when the message is sent, so pasted links count too
+		if (item.kind !== "gif") {
+			recordUse(item);
+		}
+
+		if (picker === "reaction") {
+			if (item.kind === "emoji") {
+				setReaction({ emoji: item.emoji });
+				saveSelectedReaction({ emoji: item.emoji });
+			} else if (item.kind === "emote") {
+				const selected: Reaction = { emote: { code: item.emote.code, url: item.emote.url } };
+				setReaction(selected);
+				saveSelectedReaction(selected);
+			}
+			setPicker(undefined);
+			return;
+		}
+
+		switch (item.kind) {
+			case "emoji":
+				insertText(item.emoji, false);
+				break;
+			case "emote":
+				pickedEmotesRef.current.set(item.emote.code, item.emote);
+				insertText(item.emote.code, true);
+				break;
+			case "gif":
+				// Like Discord, a picked GIF is sent right away as its own message
+				setPicker(undefined);
+				void onSend(item.url, {}).then((sent) => sent && recordUse(item));
+				break;
+		}
+	};
+
+	// Emote code to image URL for every emote in the message
+	const messageEmotes = (message: string) => {
+		const found: Record<string, string> = {};
+		for (const word of message.split(/\s+/)) {
+			const emote = pickedEmotesRef.current.get(word) ?? emotes.map.get(word);
+			if (emote && Object.keys(found).length < MAX_MESSAGE_EMOTES) {
+				found[word] = emote.url;
+			}
+		}
+		return found;
+	};
 
 	const submit = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
 
-		if (!text.trim()) {
+		const message = text.trim();
+		if (!message) {
 			return;
 		}
 
-		const sent = await onSend(text);
+		const sent = await onSend(message, messageEmotes(message));
 		if (sent) {
+			for (const word of message.split(/\s+/)) {
+				if (isAllowedGifUrl(word, emotes.gifHosts)) {
+					recordUse({ kind: "gif", url: word });
+				}
+			}
 			setText("");
 		}
 	};
+
+	// Click sends the selected reaction, holding opens the reaction picker
+	const cancelHold = () => {
+		clearTimeout(holdTimerRef.current);
+		pressRef.current = "idle";
+	};
+	const onReactionPointerDown = (event: React.PointerEvent) => {
+		if (!onReaction || event.button !== 0) {
+			return;
+		}
+		pressRef.current = "pressed";
+		clearTimeout(holdTimerRef.current);
+		holdTimerRef.current = setTimeout(() => {
+			pressRef.current = "held";
+			setPicker("reaction");
+		}, REACTION_HOLD_MS);
+	};
+	const onReactionPointerUp = () => {
+		clearTimeout(holdTimerRef.current);
+		if (pressRef.current === "pressed") {
+			onReaction?.(reaction);
+		}
+		pressRef.current = "idle";
+	};
+
+	useEffect(() => () => clearTimeout(holdTimerRef.current), []);
 
 	return (
 		<form
@@ -164,48 +277,38 @@ const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
 			className="border-t border-gray-700 bg-gray-900/70 p-3"
 		>
 			<div className="relative flex items-center gap-2">
-				{isEmojiPickerOpen && (
-					<EmojiPicker anchorRef={composerRef} emotes={emotes} onPick={insertText} onClose={closeEmojiPicker} />
-				)}
-
-				{isReactionPickerOpen && onReaction && (
-					<div
-						className="absolute bottom-full left-0 z-50 mb-2 flex flex-wrap gap-1 rounded-md border border-gray-700 bg-gray-900 p-1 shadow-xl"
-						onMouseLeave={() => setIsReactionPickerOpen(false)}
-					>
-						{REACTION_EMOJIS.map((emoji) => (
-							<button
-								type="button"
-								key={emoji}
-								onClick={() => onReaction(emoji)}
-								className="flex h-9 w-9 items-center justify-center rounded text-xl transition-transform hover:scale-125 hover:bg-gray-700"
-							>
-								{emoji}
-							</button>
-						))}
-					</div>
+				{picker && (
+					<MediaPicker anchorRef={composerRef} mode={picker} emotes={emotes} onPick={onPick} onClose={closePicker} />
 				)}
 
 				<button
 					type="button"
-					onClick={() => {
-						setIsReactionPickerOpen((open) => !open);
-						setIsEmojiPickerOpen(false);
+					onPointerDown={onReactionPointerDown}
+					onPointerUp={onReactionPointerUp}
+					onPointerLeave={cancelHold}
+					onPointerCancel={cancelHold}
+					onContextMenu={(event) => event.preventDefault()}
+					onKeyDown={(event) => {
+						if (event.key === "Enter" || event.key === " ") {
+							event.preventDefault();
+							onReaction?.(reaction);
+						} else if (event.key === "ArrowUp") {
+							event.preventDefault();
+							setPicker("reaction");
+						}
 					}}
 					disabled={!onReaction}
-					className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-700 bg-gray-800 text-rose-300 hover:bg-gray-700 disabled:cursor-not-allowed disabled:text-gray-600"
-					title={locale.button_reaction_title}
+					className={`inline-flex h-9 w-9 shrink-0 touch-none select-none items-center justify-center rounded-md border border-gray-700 hover:bg-gray-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${picker === "reaction" ? "bg-gray-700" : "bg-gray-800"}`}
+					title={locale.button_reaction_hold_hint}
+					aria-label={locale.button_reaction_hold_hint}
 				>
-					<HeartIcon className="h-5 w-5" />
+					<ReactionPreview reaction={reaction} />
 				</button>
 
 				<button
 					type="button"
-					onClick={() => {
-						setIsEmojiPickerOpen((open) => !open);
-						setIsReactionPickerOpen(false);
-					}}
-					className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-700 hover:bg-gray-700 ${isEmojiPickerOpen ? "bg-gray-700 text-yellow-300" : "bg-gray-800 text-gray-100"}`}
+					onClick={() => setPicker((open) => open === "chat" ? undefined : "chat")}
+					className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-700 hover:bg-gray-700 ${picker === "chat" ? "bg-gray-700 text-yellow-300" : "bg-gray-800 text-gray-100"}`}
 					title={locale.button_emoji_title}
 				>
 					<FaceSmileIcon className="h-5 w-5" />
@@ -279,7 +382,7 @@ const getLocalizedStatus = (status: ChatStatus, locale: { status_connecting: str
 const ChatPanel = (props: ChatPanelProps) => {
 	const { streamKey, variant, isOpen, adapter, displayName, onReaction, onChangeDisplayNameRequested } = props;
 	const { locale } = useContext(LocaleContext);
-	const { list: emoteList, map: emoteMap } = useEmotes(streamKey);
+	const streamEmotes = useEmotes(streamKey);
 	const { messages, status, error, sendMessage } = useChatSession(
 		streamKey,
 		adapter,
@@ -326,7 +429,7 @@ const ChatPanel = (props: ChatPanelProps) => {
 	};
 
 	const onSend = useCallback(
-		async (text: string) => {
+		async (text: string, emotes: Record<string, string>) => {
 			if (!displayName?.trim()) {
 				onChangeDisplayNameRequested?.();
 				return false;
@@ -336,7 +439,7 @@ const ChatPanel = (props: ChatPanelProps) => {
 			setSendError(null);
 
 			try {
-				await sendMessage(text.trim(), displayName!.trim(), locale.chat.error_not_connected);
+				await sendMessage(text.trim(), displayName!.trim(), locale.chat.error_not_connected, emotes);
 				return true;
 			} catch (nextError) {
 				const message =
@@ -406,7 +509,7 @@ const ChatPanel = (props: ChatPanelProps) => {
 
 				<div className="space-y-0">
 					{messages.map((message) => (
-						<ChatMessage key={message.id} message={message} emotes={emoteMap} />
+						<ChatMessage key={message.id} message={message} emotes={streamEmotes.map} gifHosts={streamEmotes.gifHosts} />
 					))}
 				</div>
 			</div>
@@ -414,7 +517,7 @@ const ChatPanel = (props: ChatPanelProps) => {
 			<ChatComposer
 				status={status}
 				isSending={isSending}
-				emotes={emoteList}
+				emotes={streamEmotes}
 				onNameRequested={onChangeDisplayNameRequested ?? noop}
 				onReaction={onReaction}
 				onSend={onSend}

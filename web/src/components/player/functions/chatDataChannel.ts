@@ -11,6 +11,7 @@ type ChatInbound = {
 	clientMsgId: string;
 	text: string;
 	displayName: string;
+	emotes?: Record<string, string>;
 };
 
 type ChatHistoryEvent = {
@@ -196,7 +197,7 @@ export class ChatDataChannelAdapter implements ChatAdapter {
 		};
 	}
 
-	async send(text: string, displayName: string): Promise<void> {
+	async send(text: string, displayName: string, emotes?: Record<string, string>): Promise<void> {
 		if (!this.channel || this.channel.readyState !== "open") {
 			throw new Error("Chat data channel is not open");
 		}
@@ -211,6 +212,7 @@ export class ChatDataChannelAdapter implements ChatAdapter {
 			clientMsgId,
 			text,
 			displayName,
+			...(emotes && Object.keys(emotes).length > 0 ? { emotes } : {}),
 		};
 
 		const rawPayload = JSON.stringify(payload);

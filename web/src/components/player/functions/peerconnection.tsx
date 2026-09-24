@@ -23,8 +23,16 @@ interface LayerEncoding {
 	encodingId: string
 }
 
+// Video layer with the quality detected by the server, zero until known
+export interface VideoLayerInfo extends LayerEncoding {
+	width?: number
+	height?: number
+	framesPerSecond?: number
+	bitrate?: number // bits per second
+}
+
 interface LayersMessageTrack {
-	layers: LayerEncoding[]
+	layers: VideoLayerInfo[]
 }
 
 interface LayersMessagePayload {
@@ -48,7 +56,7 @@ export interface SetupPeerConnectionProps {
 	onStreamStatus: (status: StreamStatus) => void,
 	onLayerStatus: (layers: CurrentLayersMessage) => void,
 	onAudioLayerChange: (layers: string[]) => void,
-	onVideoLayerChange: (layers: string[]) => void,
+	onVideoLayerChange: (layers: VideoLayerInfo[]) => void,
 	onLayerEndpointChange?: (endpoint: string) => void,
 	onStateChange: (state: SetupPeerConnectionStateChange) => void,
 	onStreamRestart: () => void,
@@ -197,9 +205,9 @@ export async function PeerConnectionSetup(props: SetupPeerConnectionProps): Prom
 
 		evtSource.addEventListener("layers", event => {
 			const parsed = JSON.parse(event.data) as LayersMessagePayload
-			const videoLayerIds = parsed['1']?.layers.map((layer) => layer.encodingId) ?? []
+			const videoLayers = parsed['1']?.layers ?? []
 			const audioLayerIds = parsed['2']?.layers.map((layer) => layer.encodingId) ?? []
-			onVideoLayerChange(videoLayerIds)
+			onVideoLayerChange(videoLayers)
 			onAudioLayerChange(audioLayerIds)
 		})
 

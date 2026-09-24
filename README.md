@@ -409,6 +409,9 @@ For Discord the original "live" message is edited to show the stream has ended, 
 
 ## Clips
 
+The quality selector shows each simulcast layer with its detected resolution, frame rate and bitrate, e.g.
+`0 - 1080p @ 120fps, 12 Mb/s`.
+
 Viewers can clip the last minutes of a live stream. The scissors button in the player opens an editor with the recent
 part of the stream, where they pick a start and end and give the clip a title (the date and time when left empty).
 Published clips appear in the clips panel, opened with the film button next to the chat button.
@@ -437,16 +440,31 @@ support, viewers there can still create and download clips.
 
 ## Chat Emotes and Reactions
 
-The chat has an emoji picker, and viewers can react to the stream with one of ten emojis. Reactions are counted by the
-server and sent to all viewers four times per second, so they scale with the number of viewers.
+The chat has an emoji picker with every Unicode emoji, emotes and GIFs. The 50 emojis, emotes and GIFs a viewer uses
+most are remembered in their browser and shown first.
 
-Chat can also show emotes from 7TV, BetterTTV and FrankerFaceZ. The server fetches the global emotes and the emotes of
-a Twitch channel, caches them for 30 minutes and gives viewers one merged list.
+Clicking the reaction button sends the selected reaction, holding it opens a picker to choose any emoji or emote as
+reaction. Reactions are counted by the server and sent to all viewers four times per second, so they scale with the
+number of viewers.
+
+Chat shows emotes from Twitch, 7TV, BetterTTV and FrankerFaceZ. The server fetches the global emotes and the emotes of
+a Twitch channel, caches them for 30 minutes and gives viewers one merged list. The emote picker can also search all of
+7TV, BetterTTV and FrankerFaceZ; emotes used from a search are sent along with the message so every viewer sees them.
+
+Twitch's own emotes (subscriber emotes of the channel and globals like Kappa) need a Twitch application: create one at
+[dev.twitch.tv/console](https://dev.twitch.tv/console) (any OAuth redirect URL, e.g. `http://localhost`) and set its
+client ID and secret.
+
+GIF links are shown as images when they come from a host in `CHAT_GIF_HOSTS`. Picking a GIF in the picker sends it right
+away.
 
 | Variable                 | Description                                                                                                           |
 |--------------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `CHAT_EMOTE_PROVIDERS`   | Comma separated emote providers: `7tv`, `bttv` and/or `ffz`. Emotes are disabled when unset.                         |
+| `CHAT_EMOTE_PROVIDERS`   | Comma separated emote providers: `7tv`, `bttv` and/or `ffz`. Twitch is added when its credentials are set.          |
 | `CHAT_EMOTES_TWITCH_IDS` | Numeric Twitch user ID whose channel emotes to show, for all streams (`12345`) or per stream key (`key:12345,...`). |
+| `TWITCH_CLIENT_ID`       | Client ID of a Twitch application, enables Twitch channel and global emotes.                                         |
+| `TWITCH_CLIENT_SECRET`   | Client secret of that Twitch application.                                                                             |
+| `CHAT_GIF_HOSTS`         | Comma separated hosts whose image links are shown inline in chat, `*` for any https host.                            |
 
 ## Social Stream Ninja
 

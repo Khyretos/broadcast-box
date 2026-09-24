@@ -5,11 +5,11 @@ import VideoLayerSelectorComponent from "./components/VideoLayerSelectorComponen
 import AudioLayerSelectorComponent from "./components/AudioLayerSelectorComponent";
 import CurrentViewersComponent from "./components/CurrentViewersComponent";
 import { StreamStatus } from '../../providers/StatusProvider';
-import { CurrentLayersMessage, PeerConnectionDataChannels, PeerConnectionSetup, SetupPeerConnectionProps } from './functions/peerconnection';
+import { CurrentLayersMessage, PeerConnectionDataChannels, PeerConnectionSetup, SetupPeerConnectionProps, VideoLayerInfo } from './functions/peerconnection';
 import { ChatAdapter } from '../../hooks/useChatSession';
 import { ArrowsPointingOutIcon, Square2StackIcon, ScissorsIcon, XMarkIcon } from '@heroicons/react/20/solid';
 import { ChatBubbleLeftRightIcon, FilmIcon } from '@heroicons/react/24/outline';
-import { REACTION_EMOJIS, ReactionEmoji, ReactionsMessage } from './functions/reactions';
+import { Reaction, ReactionsMessage } from './functions/reactions';
 import { LocaleContext } from '../../providers/LocaleProvider';
 import VolumeComponent from './components/VolumeComponent';
 import { StatusMessageComponent } from './components/StatusMessageComponent';
@@ -29,7 +29,15 @@ interface PlayerProps {
 	onCreateClip?(): void;
 }
 
-export type ReactionSender = (emoji: string) => void;
+export type ReactionSender = (reaction: Reaction) => void;
+
+interface ReactionAnimation {
+	id: number;
+	x: number;
+	delay: number;
+	emoji: string;
+	emoteUrl?: string;
+}
 
 // Cap on floating reactions, so a busy stream doesn't flood the player
 const MAX_REACTION_ANIMATIONS = 24;
@@ -67,14 +75,14 @@ const Player = (props: PlayerProps) => {
 
 	const [currentLayersStatus, setCurrentLayersStatus] = useState<CurrentLayersMessage | undefined>()
 	const [audioLayers, setAudioLayers] = useState<string[]>([]);
-	const [videoLayers, setVideoLayers] = useState<string[]>([]);
+	const [videoLayers, setVideoLayers] = useState<VideoLayerInfo[]>([]);
 	const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
 	const [layerEndpoint, setLayerEndpoint] = useState<string>('')
 	const [streamState, setStreamState] = useState<"Loading" | "Playing" | "Offline" | "Error">("Loading");
 	const [videoOverlayVisible, setVideoOverlayVisible] = useState<boolean>(false)
 	const [isVideoMuted, setIsVideoMuted] = useState<boolean>(true)
 	const [videoVolume, setVideoVolume] = useState<number>(50)
-	const [reactionAnimations, setReactionAnimations] = useState<{ id: number; x: number; emoji: string; delay: number }[]>([])
+	const [reactionAnimations, setReactionAnimations] = useState<ReactionAnimation[]>([])
 	const [dataChannels, setDataChannels] = useState<PeerConnectionDataChannels | undefined>()
 
 	const clickDelay = 250;
@@ -126,21 +134,28 @@ const Player = (props: PlayerProps) => {
 		},
 	}), [onStreamStatusChange, streamKey])
 
-	const addReactionAnimations = useCallback((counts: Record<string, number>) => {
-		const added: { id: number; x: number; emoji: string; delay: number }[] = [];
-		for (const emoji of Object.keys(counts)) {
-			const count = counts[emoji];
-			if (!REACTION_EMOJIS.includes(emoji as ReactionEmoji)) {
-				continue;
-			}
+	const addReactionAnimations = useCallback((message: Pick<ReactionsMessage, "counts" | "emotes">) => {
+		const added: ReactionAnimation[] = [];
+		const add = (count: number, content: Pick<ReactionAnimation, "emoji" | "emoteUrl">) => {
 			for (let i = 0; i < Math.min(count, MAX_ANIMATIONS_PER_EMOJI); i++) {
 				reactionAnimationIdRef.current += 1;
 				added.push({
 					id: reactionAnimationIdRef.current,
 					x: Math.round((Math.random() - 0.5) * 40),
-					emoji,
 					delay: Math.round(Math.random() * 250),
+					...content,
 				});
+			}
+		};
+
+		for (const emoji of Object.keys(message.counts ?? {})) {
+			if (emoji.length <= 32) {
+				add(message.counts[emoji], { emoji });
+			}
+		}
+		for (const emote of message.emotes ?? []) {
+			if (typeof emote.url === "string" && emote.url.startsWith("https://")) {
+				add(emote.count, { emoteUrl: emote.url, emoji: emote.code });
 			}
 		}
 
@@ -279,13 +294,15 @@ const Player = (props: PlayerProps) => {
 		}
 
 		// The server sends every reaction back to all viewers, the sender included
-		const sendReaction = (emoji: string) => {
+		const sendReaction = (reaction: Reaction) => {
 			if (channel.readyState !== "open") {
 				return;
 			}
 
 			try {
-				channel.send(JSON.stringify({ type: "reaction", emoji }));
+				channel.send(JSON.stringify(reaction.emote
+					? { type: "reaction", emote: reaction.emote }
+					: { type: "reaction", emoji: reaction.emoji }));
 			} catch (error) {
 				console.log("ReactionDataChannel.Send.Error", error);
 			}
@@ -299,9 +316,9 @@ const Player = (props: PlayerProps) => {
 			}
 
 			try {
-				const payload = JSON.parse(event.data) as { type?: string; counts?: ReactionsMessage["counts"] };
-				if (payload.type === "reactions" && payload.counts) {
-					addReactionAnimations(payload.counts);
+				const payload = JSON.parse(event.data) as Partial<ReactionsMessage>;
+				if (payload.type === "reactions") {
+					addReactionAnimations({ counts: payload.counts ?? {}, emotes: payload.emotes });
 				}
 			} catch {
 				return;
@@ -494,7 +511,9 @@ const Player = (props: PlayerProps) => {
 								style={{ "--reaction-x": `${reaction.x}px`, animationDelay: `${reaction.delay}ms` } as CSSProperties}
 								onAnimationEnd={() => setReactionAnimations((current) => current.filter((item) => item.id !== reaction.id))}
 							>
-								{reaction.emoji}
+								{reaction.emoteUrl
+									? <img src={reaction.emoteUrl} alt={reaction.emoji} className="h-8 w-auto max-w-12 object-contain" />
+									: reaction.emoji}
 							</span>
 						))}
 					</div>
