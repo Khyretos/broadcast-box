@@ -33,6 +33,10 @@ func GetServeMuxHandler() http.HandlerFunc {
 	// WHEP session endpoints
 	serverMux.HandleFunc("/api/layer/", corsHandler(layerChangeHandler))
 
+	// Clips
+	serverMux.HandleFunc("/api/clips", corsHandler(clipsHandler))
+	serverMux.HandleFunc("/api/clips/", corsHandler(clipsHandler))
+
 	// Logging and status endpoints
 	serverMux.HandleFunc("/api/log", corsHandler(logHandler))
 	serverMux.HandleFunc("/api/status", corsHandler(statusHandler))

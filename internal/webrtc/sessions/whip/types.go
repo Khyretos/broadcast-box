@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/glimesh/broadcast-box/internal/clips"
 	"github.com/glimesh/broadcast-box/internal/webrtc/codecs"
 	"github.com/pion/webrtc/v4"
 )
@@ -28,6 +29,9 @@ type (
 		TracksLock  sync.RWMutex
 		VideoTracks map[string]*VideoTrack
 		AudioTracks map[string]*AudioTrack
+
+		// Clip buffer of the stream, nil when clips are disabled
+		Recorder *clips.Recorder
 
 		// TODO: WHEPSessionsSnapshot should contain serializable state, not runtime references.
 		WHEPSessionsSnapshot atomic.Value

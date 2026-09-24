@@ -79,6 +79,10 @@ func (s *Session) AddHost(peerConnection *webrtc.PeerConnection) (err error) {
 		VideoTracks: make(map[string]*whip.VideoTrack),
 	}
 	host.MarkActive()
+	host.Recorder = s.Recorder
+	if s.Recorder != nil {
+		s.Recorder.Reset()
+	}
 	host.SetOnClosed(func() { s.handleHostClosed(host) })
 	host.SetOnConnected(func() { notify.StreamOnline(s.StreamKey) })
 
@@ -174,6 +178,10 @@ func (s *Session) close() {
 		s.updateHostWHEPSessionsSnapshot()
 
 		s.RemoveHost()
+
+		if s.Recorder != nil {
+			s.Recorder.Close()
+		}
 
 		if s.onClose != nil {
 			s.onClose()

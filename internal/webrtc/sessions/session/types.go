@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/glimesh/broadcast-box/internal/chat"
+	"github.com/glimesh/broadcast-box/internal/clips"
 	"github.com/glimesh/broadcast-box/internal/webrtc/sessions/whep"
 	"github.com/glimesh/broadcast-box/internal/webrtc/sessions/whip"
 )
@@ -31,6 +32,9 @@ type Session struct {
 	WHEPSessions     map[string]*whep.WHEPSession
 
 	ChatManager *chat.Manager
+
+	// Rolling buffer for clips, nil when clips are disabled
+	Recorder *clips.Recorder
 
 	dataChannelPeersLock sync.RWMutex
 	dataChannelPeers     map[string]*dataChannelPeer

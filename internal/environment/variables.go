@@ -36,6 +36,20 @@ const (
 	NotifyOfflineGracePeriod = "NOTIFY_OFFLINE_GRACE_PERIOD"
 	NotifyStreamKeys         = "NOTIFY_STREAM_KEYS"
 
+	// CLIPS
+	ClipStoragePath    = "CLIP_STORAGE_PATH"
+	ClipS3Endpoint     = "CLIP_S3_ENDPOINT"
+	ClipS3Bucket       = "CLIP_S3_BUCKET"
+	ClipS3AccessKey    = "CLIP_S3_ACCESS_KEY"
+	ClipS3SecretKey    = "CLIP_S3_SECRET_KEY"
+	ClipS3Region       = "CLIP_S3_REGION"
+	ClipS3Prefix       = "CLIP_S3_PREFIX"
+	ClipS3UseSSL       = "CLIP_S3_USE_SSL"
+	ClipBufferDuration = "CLIP_BUFFER_DURATION"
+	ClipMaxDuration    = "CLIP_MAX_DURATION"
+	ClipDraftPath      = "CLIP_DRAFT_PATH"
+	ClipMaxDrafts      = "CLIP_MAX_DRAFTS"
+
 	// SOCIAL STREAM NINJA
 	SSNSessionID        = "SSN_SESSION_ID"
 	SSNStreamKeys       = "SSN_STREAM_KEYS"

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/glimesh/broadcast-box/internal/chat"
+	"github.com/glimesh/broadcast-box/internal/clips"
 	"github.com/glimesh/broadcast-box/internal/console"
 	"github.com/glimesh/broadcast-box/internal/environment"
 	"github.com/glimesh/broadcast-box/internal/networktest"
@@ -34,6 +35,7 @@ func main() {
 	slog.Info("Booting up Broadcast Box")
 
 	notify.Setup()
+	clips.Setup()
 
 	chatManager := chat.NewManager()
 	webrtc.Setup(chatManager)
