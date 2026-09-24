@@ -218,6 +218,10 @@ const locale_en: localeInterface = {
     gif_link_placeholder: "Paste a GIF link",
     gif_add: "Add",
     gif_host_not_allowed: "GIFs from this site are not allowed here.",
+    gif_search_placeholder: "Search GIFs",
+    gifs_trending: "Trending",
+    gifs_search_results: "Results",
+    gifs_powered_by: "Powered by GIPHY / Tenor",
     button_reaction_hold_hint: "Click to react, hold to choose a reaction",
   },
   clips: {

@@ -224,6 +224,10 @@ export interface localeInterface {
     gif_link_placeholder: string,
     gif_add: string,
     gif_host_not_allowed: string,
+    gif_search_placeholder: string,
+    gifs_trending: string,
+    gifs_search_results: string,
+    gifs_powered_by: string,
     button_reaction_hold_hint: string,
   },
   clips: {

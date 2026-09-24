@@ -2,7 +2,7 @@ import { RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, use
 import { createPortal } from "react-dom";
 import { LocaleContext } from "../../../providers/LocaleProvider";
 import { EmojiCategory, loadEmojiCategories, searchEmojis } from "../functions/emojiData";
-import { Emote, StreamEmotes, isAllowedGifUrl, providerName, searchEmotes } from "../../../hooks/useEmotes";
+import { Emote, GifResult, StreamEmotes, isAllowedGifUrl, providerName, searchEmotes, searchGifs } from "../../../hooks/useEmotes";
 import { fuzzyFilter, fuzzyScore } from "../functions/fuzzy";
 import { RecentItem, getRecent, onRecentChanged } from "../functions/recentItems";
 
@@ -55,6 +55,7 @@ const MediaPicker = (props: MediaPickerProps) => {
 	const [tab, setTab] = useState<Tab>("emoji");
 	const [search, setSearch] = useState("");
 	const [remote, setRemote] = useState<{ query: string; emotes: Emote[] }>({ query: "", emotes: [] });
+	const [gifResults, setGifResults] = useState<{ query: string; gifs: GifResult[] }>();
 	const [gifLink, setGifLink] = useState("");
 	const [gifError, setGifError] = useState(false);
 	const [position, setPosition] = useState<{ left: number; bottom: number; width: number; height: number }>();
@@ -128,6 +129,26 @@ const MediaPicker = (props: MediaPickerProps) => {
 		};
 	}, [query, tab]);
 
+	// Search Giphy/Tenor while typing in the GIFs tab, trending when empty
+	useEffect(() => {
+		if (tab !== "gifs" || !emotes.gifSearch) {
+			return;
+		}
+		let cancelled = false;
+		const timeout = setTimeout(() => {
+			searchGifs(query).then((found) => !cancelled && setGifResults({ query, gifs: found }));
+		}, query ? SEARCH_DELAY_MS : 0);
+		return () => {
+			cancelled = true;
+			clearTimeout(timeout);
+		};
+	}, [emotes.gifSearch, query, tab]);
+
+	const recentGifs = useMemo(() => {
+		const allowed = recent.gifs.filter((item) => isAllowedGifUrl(item.url, emotes.gifHosts));
+		return query ? fuzzyFilter(allowed.filter((item) => item.title), query, (item) => item.title ?? "", 30) : allowed;
+	}, [emotes.gifHosts, query, recent.gifs]);
+
 	const emojiResults = useMemo(() => searchEmojis(emojiCategories ?? [], query), [emojiCategories, query]);
 
 	const localEmotes = useMemo(() => {
@@ -194,13 +215,17 @@ const MediaPicker = (props: MediaPickerProps) => {
 				))}
 			</div>
 
-			{tab !== "gifs" && (
+			{(tab !== "gifs" || emotes.gifSearch) && (
 				<input
 					type="text"
 					autoFocus
 					value={search}
 					onChange={(event) => setSearch(event.target.value)}
-					placeholder={tab === "emoji" ? locale.chat.emoji_search_placeholder : locale.chat.emote_search_placeholder}
+					placeholder={({
+						emoji: locale.chat.emoji_search_placeholder,
+						emotes: locale.chat.emote_search_placeholder,
+						gifs: locale.chat.gif_search_placeholder,
+					})[tab]}
 					className="m-2 h-8 rounded-md border border-gray-700 bg-gray-800 px-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-hidden"
 				/>
 			)}
@@ -297,9 +322,54 @@ const MediaPicker = (props: MediaPickerProps) => {
 
 				{tab === "gifs" && (
 					<>
-						{emotes.gifHosts.length === 0 ? (
+						{emotes.gifHosts.length === 0 && !emotes.gifSearch && (
 							<p className="p-2 text-xs text-gray-400">{locale.chat.gifs_disabled}</p>
-						) : (
+						)}
+
+						{recentGifs.length > 0 && (
+							<>
+								<SectionTitle>🕘 {locale.chat.picker_frequently_used}</SectionTitle>
+								<div className="grid grid-cols-3 gap-1">
+									{recentGifs.map((item) => (
+										<button type="button" key={item.url} title={item.title} onClick={() => onPick(item)} className="flex h-24 items-center justify-center overflow-hidden rounded bg-gray-800 hover:ring-2 hover:ring-blue-500">
+											<img src={item.preview ?? item.url} alt={item.title ?? ""} loading="lazy" className="max-h-24 max-w-full object-contain" />
+										</button>
+									))}
+								</div>
+							</>
+						)}
+
+						{emotes.gifSearch && (
+							<>
+								<SectionTitle>{query ? locale.chat.gifs_search_results : `🔥 ${locale.chat.gifs_trending}`}</SectionTitle>
+								{gifResults?.query !== query && <p className="animate-pulse p-2 text-xs text-gray-400">{locale.chat.emotes_searching}</p>}
+								{gifResults?.query === query && gifResults.gifs.length === 0 && <p className="p-2 text-xs text-gray-400">{locale.chat.emoji_no_results}</p>}
+								{gifResults?.query === query && (
+									<div className="columns-2 gap-1">
+										{gifResults.gifs.map((gif) => (
+											<button
+												type="button"
+												key={gif.url}
+												title={gif.title}
+												onClick={() => onPick({ kind: "gif", url: gif.url, preview: gif.preview, title: gif.title })}
+												className="mb-1 block w-full overflow-hidden rounded bg-gray-800 hover:ring-2 hover:ring-blue-500"
+											>
+												<img
+													src={gif.preview}
+													alt={gif.title ?? ""}
+													loading="lazy"
+													className="block w-full"
+													style={gif.width && gif.height ? { aspectRatio: `${gif.width} / ${gif.height}` } : undefined}
+												/>
+											</button>
+										))}
+									</div>
+								)}
+								<p className="mt-1 text-right text-[10px] text-gray-500">{locale.chat.gifs_powered_by}</p>
+							</>
+						)}
+
+						{emotes.gifHosts.length > 0 && (
 							<form
 								className="mt-2 flex gap-1"
 								onSubmit={(event) => {
@@ -311,7 +381,7 @@ const MediaPicker = (props: MediaPickerProps) => {
 							>
 								<input
 									type="url"
-									autoFocus
+									autoFocus={!emotes.gifSearch}
 									value={gifLink}
 									onChange={(event) => {
 										setGifLink(event.target.value);
@@ -326,19 +396,6 @@ const MediaPicker = (props: MediaPickerProps) => {
 							</form>
 						)}
 						{gifError && <p className="mt-1 text-xs text-red-300">{locale.chat.gif_host_not_allowed}</p>}
-
-						{recent.gifs.length > 0 && (
-							<>
-								<SectionTitle>🕘 {locale.chat.picker_frequently_used}</SectionTitle>
-								<div className="grid grid-cols-3 gap-1">
-									{recent.gifs.filter((item) => isAllowedGifUrl(item.url, emotes.gifHosts)).map((item) => (
-										<button type="button" key={item.url} onClick={() => onPick(item)} className="flex h-24 items-center justify-center overflow-hidden rounded bg-gray-800 hover:ring-2 hover:ring-blue-500">
-											<img src={item.url} alt="" loading="lazy" className="max-h-24 max-w-full object-contain" />
-										</button>
-									))}
-								</div>
-							</>
-						)}
 					</>
 				)}
 			</div>

@@ -6,7 +6,7 @@ import { Emote } from "../../../hooks/useEmotes";
 export type RecentItem =
 	| { kind: "emoji"; emoji: string }
 	| { kind: "emote"; emote: Emote }
-	| { kind: "gif"; url: string };
+	| { kind: "gif"; url: string; preview?: string; title?: string };
 
 interface StoredItem {
 	item: RecentItem;

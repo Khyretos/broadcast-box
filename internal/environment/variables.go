@@ -32,6 +32,9 @@ const (
 	ChatEmoteProviders  = "CHAT_EMOTE_PROVIDERS"
 	ChatEmotesTwitchIDs = "CHAT_EMOTES_TWITCH_IDS"
 	ChatGIFHosts        = "CHAT_GIF_HOSTS"
+	GiphyAPIKey         = "GIPHY_API_KEY"
+	TenorAPIKey         = "TENOR_API_KEY"
+	GIFContentRating    = "GIF_CONTENT_RATING"
 	TwitchClientID      = "TWITCH_CLIENT_ID"
 	TwitchClientSecret  = "TWITCH_CLIENT_SECRET"
 

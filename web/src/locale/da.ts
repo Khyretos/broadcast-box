@@ -218,6 +218,10 @@ const locale_da: localeInterface = {
     gif_link_placeholder: "Indsæt et GIF-link",
     gif_add: "Tilføj",
     gif_host_not_allowed: "GIF'er fra denne side er ikke tilladt her.",
+    gif_search_placeholder: "Søg efter GIF'er",
+    gifs_trending: "Populære",
+    gifs_search_results: "Resultater",
+    gifs_powered_by: "Leveret af GIPHY / Tenor",
     button_reaction_hold_hint: "Klik for at reagere, hold for at vælge en reaktion",
   },
   clips: {

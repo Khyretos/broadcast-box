@@ -37,8 +37,14 @@ services:
       CHAT_EMOTES_TWITCH_IDS: ${CHAT_EMOTES_TWITCH_IDS:-}
       TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID:-}
       TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET:-}
-      # Hosts whose GIF links are shown as images in chat, e.g. gifs.example.com
+      # Hosts whose GIF links are shown as images in chat, comma separated.
+      # "*.example.com" allows a domain and all its subdomains.
       CHAT_GIF_HOSTS: ${CHAT_GIF_HOSTS:-}
+      # GIF search in the picker (free keys from developers.giphy.com and
+      # Google Cloud for Tenor), their hosts are allowed automatically
+      GIPHY_API_KEY: ${GIPHY_API_KEY:-}
+      TENOR_API_KEY: ${TENOR_API_KEY:-}
+      GIF_CONTENT_RATING: ${GIF_CONTENT_RATING:-pg-13}
 
       # Optional cap on viewers per stream, protects your upload bandwidth
       MAX_VIEWERS_PER_STREAM: ${MAX_VIEWERS_PER_STREAM:-}

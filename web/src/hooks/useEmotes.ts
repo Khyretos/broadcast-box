@@ -13,14 +13,18 @@ export type EmoteMap = Map<string, Emote>;
 interface EmotesResponse {
 	emotes: Emote[];
 	gifHosts: string[];
+	gifSearch: boolean;
 }
 
 export interface StreamEmotes {
 	streamKey: string;
 	list: Emote[];
 	map: EmoteMap;
-	// Hosts whose images are shown inline in chat, "*" for any
+	// Hosts whose images are shown inline in chat, "*.example.com" for a
+	// domain and its subdomains, "*" for any
 	gifHosts: string[];
+	// Giphy and/or Tenor search is configured on the server
+	gifSearch: boolean;
 }
 
 const cache = new Map<string, Promise<EmotesResponse>>();
@@ -30,14 +34,14 @@ const loadEmotes = (streamKey: string) => {
 	if (!request) {
 		request = fetch(`/api/chat/emotes?key=${encodeURIComponent(streamKey)}`)
 			.then((response): Promise<Partial<EmotesResponse>> | Partial<EmotesResponse> => response.ok ? response.json() : {})
-			.then((body) => ({ emotes: body.emotes ?? [], gifHosts: body.gifHosts ?? [] }))
-			.catch(() => ({ emotes: [], gifHosts: [] }));
+			.then((body) => ({ emotes: body.emotes ?? [], gifHosts: body.gifHosts ?? [], gifSearch: body.gifSearch ?? false }))
+			.catch(() => ({ emotes: [], gifHosts: [], gifSearch: false }));
 		cache.set(streamKey, request);
 	}
 	return request;
 };
 
-const emptyEmotes = (streamKey: string): StreamEmotes => ({ streamKey, list: [], map: new Map(), gifHosts: [] });
+const emptyEmotes = (streamKey: string): StreamEmotes => ({ streamKey, list: [], map: new Map(), gifHosts: [], gifSearch: false });
 
 // Emotes configured for the stream (Twitch, 7TV, BetterTTV, FrankerFaceZ)
 export const useEmotes = (streamKey: string): StreamEmotes => {
@@ -52,6 +56,7 @@ export const useEmotes = (streamKey: string): StreamEmotes => {
 					list: body.emotes,
 					map: new Map(body.emotes.map((emote) => [emote.code, emote])),
 					gifHosts: body.gifHosts,
+					gifSearch: body.gifSearch,
 				});
 			}
 		});
@@ -88,14 +93,53 @@ export const providerName = (provider: Emote["provider"]) => ({
 	ffz: "FrankerFaceZ",
 })[provider] ?? provider;
 
+// "gifs.example.com" matches that host, "*.example.com" example.com and its
+// subdomains, "*" any host. Same rules as the server.
+const matchesHost = (pattern: string, host: string) => {
+	if (pattern === "*") {
+		return true;
+	}
+	if (pattern.startsWith("*.")) {
+		const domain = pattern.slice(2);
+		return host === domain || host.endsWith(`.${domain}`);
+	}
+	return host === pattern;
+};
+
 export const isAllowedGifUrl = (value: string, gifHosts: string[]) => {
 	if (gifHosts.length === 0 || !value.startsWith("https://")) {
 		return false;
 	}
 	try {
-		const url = new URL(value);
-		return gifHosts.includes("*") || gifHosts.includes(url.hostname.toLowerCase());
+		const host = new URL(value).hostname.toLowerCase();
+		return gifHosts.some((pattern) => matchesHost(pattern.toLowerCase(), host));
 	} catch {
 		return false;
 	}
+};
+
+export interface GifResult {
+	url: string;
+	preview: string;
+	width?: number;
+	height?: number;
+	title?: string;
+	provider: "giphy" | "tenor";
+}
+
+const gifSearchCache = new Map<string, Promise<GifResult[]>>();
+
+// Searches Giphy and Tenor through the server, trending GIFs for an empty query
+export const searchGifs = (query: string): Promise<GifResult[]> => {
+	const key = query.trim().toLowerCase();
+	let request = gifSearchCache.get(key);
+	if (!request) {
+		request = fetch(`/api/chat/gifs/search?q=${encodeURIComponent(key)}`)
+			.then((response): Promise<{ gifs?: GifResult[] }> | { gifs?: GifResult[] } => response.ok ? response.json() : {})
+			.then((body) => body.gifs ?? [])
+			.catch(() => []);
+		gifSearchCache.set(key, request);
+		setTimeout(() => gifSearchCache.delete(key), 5 * 60_000);
+	}
+	return request;
 };
