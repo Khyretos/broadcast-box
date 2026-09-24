@@ -221,10 +221,10 @@ const locale_en: localeInterface = {
     gif_search_placeholder: "Search GIFs",
     gifs_trending: "Trending",
     gifs_search_results: "Results",
-    gifs_powered_by: "Powered by GIPHY",
-    gif_press_enter_giphy: "Press Enter to also search GIPHY",
+    gifs_powered_by: "Powered by {providers}",
+    gif_press_enter_search: "Press Enter to also search {providers}",
     gifs_latest: "Latest from {source}",
-    gif_giphy_limited: "GIPHY search is paused for a while, too many searches this hour.",
+    gif_search_limited: "{providers} search is paused for a while, too many searches this hour.",
     button_reaction_hold_hint: "Click to react, hold to choose a reaction",
   },
   clips: {

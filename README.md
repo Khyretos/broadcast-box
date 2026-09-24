@@ -469,6 +469,10 @@ With a Giphy API key ([developers.giphy.com](https://developers.giphy.com/dashbo
 hour) viewers can also search Giphy by pressing Enter. Results are cached for an hour, and the server stops asking Giphy
 after `GIPHY_HOURLY_LIMIT` searches in an hour, so the key is never blocked. Giphy's hosts are allowed automatically.
 
+[KLIPY](https://klipy.com) works the same way: set `KLIPY_API_KEY` (free at [partner.klipy.com](https://partner.klipy.com/api-keys))
+and pressing Enter searches Giphy and KLIPY together, each with its own hourly limit (`KLIPY_HOURLY_LIMIT`). KLIPY's
+GIFs come from `static.klipy.com`, which is then allowed in chat automatically.
+
 | Variable                 | Description                                                                                                           |
 |--------------------------|-----------------------------------------------------------------------------------------------------------------------|
 | `CHAT_EMOTE_PROVIDERS`   | Comma separated emote providers: `7tv`, `bttv` and/or `ffz`. Twitch is added when its credentials are set.          |
@@ -479,7 +483,9 @@ after `GIPHY_HOURLY_LIMIT` searches in an hour, so the key is never blocked. Gip
 | `SLINK_INSTANCES`        | Comma separated Slink servers to search for GIFs, e.g. `gifs.example.com,other.example.com`.                          |
 | `GIPHY_API_KEY`          | Giphy API key, enables Giphy search when a viewer presses Enter.                                                      |
 | `GIPHY_HOURLY_LIMIT`     | Most Giphy searches the server makes per hour. Default is `90`.                                                        |
-| `GIF_CONTENT_RATING`     | Highest content rating for GIF search: `g`, `pg`, `pg-13` or `r`. Default is `pg-13`.                                |
+| `KLIPY_API_KEY`          | KLIPY API key, enables KLIPY search when a viewer presses Enter.                                                      |
+| `KLIPY_HOURLY_LIMIT`     | Most KLIPY searches the server makes per hour. Default is `100`.                                                       |
+| `GIF_CONTENT_RATING`     | Highest content rating for Giphy and KLIPY search: `g`, `pg`, `pg-13` or `r`. Default is `pg-13`.                    |
 
 ## Social Stream Ninja
 

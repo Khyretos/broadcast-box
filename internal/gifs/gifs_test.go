@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -56,10 +57,13 @@ const slinkResponse = `{"meta":{"size":30,"total":3},"data":[
 	 "metadata":{"size":1,"mimeType":"video/mp4","width":10,"height":10}}
 ]}`
 
-func newTestService(t *testing.T, giphyKey string, giphyPerHour int) (*Service, map[string]int, *[]string) {
+func newTestService(t *testing.T, options Options) (*Service, map[string]int, *[]string) {
+	var lock sync.Mutex
 	requests := map[string]int{}
 	var queries []string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lock.Lock()
+		defer lock.Unlock()
 		requests[r.URL.Path]++
 		switch r.URL.Path {
 		case "/api/images":
@@ -76,6 +80,19 @@ func newTestService(t *testing.T, giphyKey string, giphyPerHour int) (*Service, 
 					"fixed_height_small":{"url":"https://media3.giphy.com/media/abc/100.gif?cid=track"}}},
 				{"title":"Evil","images":{"fixed_height":{"url":"https://evil.example.com/x.gif"}}}
 			]}`))
+		case "/v2/search":
+			// Tenor v2 format
+			require.Equal(t, "klipy-key", r.URL.Query().Get("key"))
+			require.Equal(t, "low", r.URL.Query().Get("contentfilter"))
+			_, _ = w.Write([]byte(`{"results":[
+				{"id":"1","title":"","content_description":"Cat Jam","media_formats":{
+					"gif":{"url":"https://static.klipy.com/ii/abc/1c/6c/full.gif","dims":[498,280],"size":2000000},
+					"mediumgif":{"url":"https://static.klipy.com/ii/abc/1c/6c/medium.gif","dims":[320,180],"size":500000},
+					"tinygif":{"url":"https://static.klipy.com/ii/abc/1c/6c/tiny.gif","dims":[220,124],"size":90000}}},
+				{"id":"2","title":"Only full","media_formats":{
+					"gif":{"url":"https://static.klipy.com/ii/def/full.gif","dims":[200,100]}}},
+				{"id":"3","title":"Elsewhere","media_formats":{"gif":{"url":"https://klipy.com/gifs/elsewhere"}}}
+			],"next":"30"}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -83,14 +100,17 @@ func newTestService(t *testing.T, giphyKey string, giphyPerHour int) (*Service, 
 	t.Cleanup(server.Close)
 
 	host := strings.TrimPrefix(server.URL, "https://")
-	service := New(giphyKey, giphyPerHour, "", []slinkInstance{{baseURL: server.URL, host: strings.Split(host, ":")[0]}})
+	options.Slink = []slinkInstance{{baseURL: server.URL, host: strings.Split(host, ":")[0]}}
+	service := New(options)
 	service.client = server.Client()
-	service.giphyBaseURL = server.URL
+	for _, provider := range service.apis {
+		provider.baseURL = server.URL
+	}
 	return service, requests, &queries
 }
 
 func TestSlinkSearch(t *testing.T) {
-	service, requests, queries := newTestService(t, "", 0)
+	service, requests, queries := newTestService(t, Options{})
 	result := service.Search(context.Background(), "cat", false)
 
 	base := service.slink[0].baseURL
@@ -109,7 +129,7 @@ func TestSlinkSearch(t *testing.T) {
 }
 
 func TestGiphyOnlyWhenRequested(t *testing.T) {
-	service, requests, _ := newTestService(t, "giphy-key", 0)
+	service, requests, _ := newTestService(t, Options{GiphyKey: "giphy-key"})
 
 	service.Search(context.Background(), "cat", false)
 	require.Zero(t, requests["/v1/gifs/search"], "typing only searches Slink")
@@ -132,7 +152,7 @@ func TestGiphyOnlyWhenRequested(t *testing.T) {
 }
 
 func TestGiphyHourlyBudget(t *testing.T) {
-	service, requests, _ := newTestService(t, "giphy-key", 2)
+	service, requests, _ := newTestService(t, Options{GiphyKey: "giphy-key", GiphyPerHour: 2})
 	now := time.Now()
 	service.now = func() time.Time { return now }
 
@@ -140,12 +160,40 @@ func TestGiphyHourlyBudget(t *testing.T) {
 	service.Search(context.Background(), "two", true)
 	result := service.Search(context.Background(), "three", true)
 	require.Equal(t, 2, requests["/v1/gifs/search"])
-	require.True(t, result.GiphyLimited)
+	require.Equal(t, []string{ProviderGiphy}, result.Limited)
 	require.Len(t, result.GIFs, 2, "Slink results are still returned")
 
 	// The budget frees up after an hour
 	now = now.Add(61 * time.Minute)
 	result = service.Search(context.Background(), "three", true)
 	require.Equal(t, 3, requests["/v1/gifs/search"])
-	require.False(t, result.GiphyLimited)
+	require.Empty(t, result.Limited)
+}
+
+func TestKlipySearch(t *testing.T) {
+	service, requests, _ := newTestService(t, Options{GiphyKey: "giphy-key", KlipyKey: "klipy-key", KlipyPerHour: 1})
+	require.Equal(t, []string{ProviderGiphy, ProviderKlipy}, service.APIProviders())
+	require.Equal(t, []string{service.slink[0].host, "*.giphy.com", "static.klipy.com"}, service.Hosts())
+
+	service.Search(context.Background(), "cat", false)
+	require.Zero(t, requests["/v2/search"], "typing only searches Slink")
+
+	result := service.Search(context.Background(), "cat", true)
+	require.Equal(t, 1, requests["/v2/search"])
+	var klipy []GIF
+	for _, gif := range result.GIFs {
+		if gif.Provider == ProviderKlipy {
+			klipy = append(klipy, gif)
+		}
+	}
+	require.Equal(t, []GIF{
+		{URL: "https://static.klipy.com/ii/abc/1c/6c/medium.gif", Preview: "https://static.klipy.com/ii/abc/1c/6c/tiny.gif", Width: 320, Height: 180, Title: "Cat Jam", Provider: ProviderKlipy, Source: "klipy.com"},
+		{URL: "https://static.klipy.com/ii/def/full.gif", Preview: "https://static.klipy.com/ii/def/full.gif", Width: 200, Height: 100, Title: "Only full", Provider: ProviderKlipy, Source: "klipy.com"},
+	}, klipy, "medium size preferred, other hosts skipped")
+
+	// Each provider has its own budget
+	result = service.Search(context.Background(), "dog", true)
+	require.Equal(t, 1, requests["/v2/search"])
+	require.Equal(t, 2, requests["/v1/gifs/search"])
+	require.Equal(t, []string{ProviderKlipy}, result.Limited)
 }

@@ -11,7 +11,8 @@ export interface Emote {
 export type EmoteMap = Map<string, Emote>;
 
 export interface GifSources {
-	giphy: boolean;
+	// Searched when the viewer presses enter: "giphy", "klipy"
+	apis: string[];
 	// Hosts of the configured Slink instances
 	slink: string[];
 }
@@ -22,7 +23,7 @@ interface EmotesResponse {
 	gifSources: GifSources;
 }
 
-const noGifSources: GifSources = { giphy: false, slink: [] };
+const noGifSources: GifSources = { apis: [], slink: [] };
 
 export interface StreamEmotes {
 	streamKey: string;
@@ -132,7 +133,7 @@ export interface GifResult {
 	width?: number;
 	height?: number;
 	title?: string;
-	provider: "giphy" | "slink";
+	provider: "giphy" | "klipy" | "slink";
 	// Host the GIF comes from
 	source: string;
 }
@@ -140,20 +141,24 @@ export interface GifResult {
 export interface GifSearchResult {
 	gifs: GifResult[];
 	// Giphy was skipped because the server's hourly Giphy budget is used up
-	giphyLimited?: boolean;
+	// API providers skipped because their hourly budget is used up
+	limited?: string[];
 }
 
 const gifSearchCache = new Map<string, Promise<GifSearchResult>>();
 
 // Searches the Slink instances, and Giphy when includeGiphy is set. Giphy
 // allows few requests per hour, so it is only searched on enter.
-export const searchGifs = (query: string, includeGiphy: boolean): Promise<GifSearchResult> => {
-	const key = `${includeGiphy ? "giphy" : "slink"}:${query.trim().toLowerCase()}`;
+// Brand names of the GIF search APIs, shown for attribution
+export const gifApiName = (api: string) => ({ giphy: "GIPHY", klipy: "KLIPY" })[api] ?? api;
+
+export const searchGifs = (query: string, includeApis: boolean): Promise<GifSearchResult> => {
+	const key = `${includeApis ? "apis" : "slink"}:${query.trim().toLowerCase()}`;
 	let request = gifSearchCache.get(key);
 	if (!request) {
-		request = fetch(`/api/chat/gifs/search?q=${encodeURIComponent(query.trim())}${includeGiphy ? "&giphy" : ""}`)
+		request = fetch(`/api/chat/gifs/search?q=${encodeURIComponent(query.trim())}${includeApis ? "&apis" : ""}`)
 			.then((response): Promise<Partial<GifSearchResult>> | Partial<GifSearchResult> => response.ok ? response.json() : {})
-			.then((body) => ({ gifs: body.gifs ?? [], giphyLimited: body.giphyLimited }))
+			.then((body) => ({ gifs: body.gifs ?? [], limited: body.limited }))
 			.catch(() => ({ gifs: [] }));
 		gifSearchCache.set(key, request);
 		setTimeout(() => gifSearchCache.delete(key), 60_000);

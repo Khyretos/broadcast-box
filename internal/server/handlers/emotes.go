@@ -26,9 +26,9 @@ func emotesHandler(responseWriter http.ResponseWriter, request *http.Request) {
 	}
 
 	responseWriter.Header().Set("Cache-Control", "public, max-age=300")
-	gifSources := map[string]any{"giphy": false, "slink": []string{}}
+	gifSources := map[string]any{"apis": []string{}, "slink": []string{}}
 	if gifs.DefaultService != nil {
-		gifSources["giphy"] = gifs.DefaultService.GiphyEnabled()
+		gifSources["apis"] = gifs.DefaultService.APIProviders()
 		if hosts := gifs.DefaultService.SlinkHosts(); hosts != nil {
 			gifSources["slink"] = hosts
 		}
@@ -41,9 +41,9 @@ func emotesHandler(responseWriter http.ResponseWriter, request *http.Request) {
 	})
 }
 
-// GET /api/chat/gifs/search?q=<query>[&giphy] searches the Slink instances,
-// and Giphy only with the giphy parameter (the viewer pressed enter). An
-// empty query lists the newest Slink images.
+// GET /api/chat/gifs/search?q=<query>[&apis] searches the Slink instances,
+// and Giphy and KLIPY only with the apis parameter (the viewer pressed
+// enter). An empty query lists the newest Slink images.
 func gifSearchHandler(responseWriter http.ResponseWriter, request *http.Request) {
 	if gifs.DefaultService == nil {
 		writeJSON(responseWriter, gifs.SearchResult{GIFs: []gifs.GIF{}})
@@ -54,8 +54,8 @@ func gifSearchHandler(responseWriter http.ResponseWriter, request *http.Request)
 		return
 	}
 
-	_, includeGiphy := request.URL.Query()["giphy"]
-	result := gifs.DefaultService.Search(request.Context(), request.URL.Query().Get("q"), includeGiphy)
+	_, includeAPIs := request.URL.Query()["apis"]
+	result := gifs.DefaultService.Search(request.Context(), request.URL.Query().Get("q"), includeAPIs)
 	if result.GIFs == nil {
 		result.GIFs = []gifs.GIF{}
 	}

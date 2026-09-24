@@ -48,6 +48,9 @@ services:
       # viewer presses Enter; the hourly cap stays under Giphy's free 100/hour
       GIPHY_API_KEY: ${GIPHY_API_KEY:-}
       GIPHY_HOURLY_LIMIT: ${GIPHY_HOURLY_LIMIT:-90}
+      # KLIPY search (free key from partner.klipy.com), also only on Enter
+      KLIPY_API_KEY: ${KLIPY_API_KEY:-}
+      KLIPY_HOURLY_LIMIT: ${KLIPY_HOURLY_LIMIT:-100}
       GIF_CONTENT_RATING: ${GIF_CONTENT_RATING:-pg-13}
 
       # Optional cap on viewers per stream, protects your upload bandwidth

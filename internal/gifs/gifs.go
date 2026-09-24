@@ -1,6 +1,7 @@
 // Package gifs searches GIFs for the chat picker: self hosted Slink
-// instances (https://github.com/andrii-kryvoviaz/slink) and Giphy. Requests go
-// through the server so API keys stay private, and results are cached.
+// instances (https://github.com/andrii-kryvoviaz/slink), Giphy and KLIPY.
+// Requests go through the server so API keys stay private, and results are
+// cached.
 package gifs
 
 import (
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +23,7 @@ import (
 
 const (
 	ProviderGiphy = "giphy"
+	ProviderKlipy = "klipy"
 	ProviderSlink = "slink"
 
 	resultLimit      = 30
@@ -29,9 +32,11 @@ const (
 	maxResponseBytes = 4 << 20
 	cacheSize        = 500
 
-	// Giphy's free API keys allow 100 requests per hour
-	giphyCacheDuration  = time.Hour
+	// Giphy's free API keys allow 100 requests per hour. Giphy and KLIPY are
+	// only searched when a viewer presses enter, and results are kept long.
+	apiCacheDuration    = time.Hour
 	defaultGiphyPerHour = 90
+	defaultKlipyPerHour = 100
 
 	// Own servers without a quota, short so new uploads show up quickly
 	slinkCacheDuration = time.Minute
@@ -49,8 +54,8 @@ type GIF struct {
 
 type SearchResult struct {
 	GIFs []GIF `json:"gifs"`
-	// Giphy was requested but skipped because the hourly budget is used up
-	GiphyLimited bool `json:"giphyLimited,omitempty"`
+	// API providers that were skipped because their hourly budget is used up
+	Limited []string `json:"limited,omitempty"`
 }
 
 type slinkInstance struct {
@@ -63,36 +68,67 @@ type cacheEntry struct {
 	expires time.Time
 }
 
+// A GIF service that needs an API key and has a request quota: only searched
+// with a query the viewer pressed enter on, and within an hourly budget
+type apiProvider struct {
+	name     string
+	key      string
+	perHour  int
+	baseURL  string
+	hosts    []string // where its GIFs are served from
+	search   func(ctx context.Context, provider *apiProvider, query string) ([]GIF, error)
+	requests []time.Time // within the last hour
+}
+
+type Options struct {
+	GiphyKey     string
+	GiphyPerHour int
+	KlipyKey     string
+	KlipyPerHour int
+	// Giphy's content rating (g, pg, pg-13, r), default pg-13
+	Rating string
+	Slink  []slinkInstance
+}
+
 type Service struct {
-	giphyKey      string
-	giphyPerHour  int
-	rating        string
-	slink         []slinkInstance
-	client        *http.Client
-	giphyBaseURL  string
-	now           func() time.Time
-	giphyRequests []time.Time // within the last hour
+	rating string
+	slink  []slinkInstance
+	apis   []*apiProvider
+	client *http.Client
+	now    func() time.Time
 
 	lock  sync.Mutex
 	cache map[string]cacheEntry
 }
 
-// DefaultService is nil when neither GIPHY_API_KEY nor SLINK_INSTANCES is set
+// DefaultService is nil when no GIF search is configured
 var DefaultService *Service
 
 func Setup() {
 	if os.Getenv(environment.TenorAPIKey) != "" {
-		slog.Warn("GIFs: Tenor's API is no longer available, TENOR_API_KEY is ignored")
+		slog.Warn("GIFs: Tenor's API is no longer available, TENOR_API_KEY is ignored (KLIPY_API_KEY is a replacement)")
 	}
 
 	giphyPerHour, _ := strconv.Atoi(os.Getenv(environment.GiphyHourlyLimit))
-	service := New(os.Getenv(environment.GiphyAPIKey), giphyPerHour, os.Getenv(environment.GIFContentRating), ParseSlinkInstances(os.Getenv(environment.SlinkInstances)))
-	if !service.GiphyEnabled() && len(service.slink) == 0 {
+	klipyPerHour, _ := strconv.Atoi(os.Getenv(environment.KlipyHourlyLimit))
+	service := New(Options{
+		GiphyKey:     strings.TrimSpace(os.Getenv(environment.GiphyAPIKey)),
+		GiphyPerHour: giphyPerHour,
+		KlipyKey:     strings.TrimSpace(os.Getenv(environment.KlipyAPIKey)),
+		KlipyPerHour: klipyPerHour,
+		Rating:       os.Getenv(environment.GIFContentRating),
+		Slink:        ParseSlinkInstances(os.Getenv(environment.SlinkInstances)),
+	})
+	if len(service.apis) == 0 && len(service.slink) == 0 {
 		return
 	}
 
 	DefaultService = service
-	slog.Info("GIFs: search enabled", "giphy", service.GiphyEnabled(), "giphyPerHour", service.giphyPerHour, "slink", service.SlinkHosts())
+	budgets := []any{}
+	for _, provider := range service.apis {
+		budgets = append(budgets, provider.name+"PerHour", provider.perHour)
+	}
+	slog.Info("GIFs: search enabled", append([]any{"apis", service.APIProviders(), "slink", service.SlinkHosts()}, budgets...)...)
 }
 
 // ParseSlinkInstances reads "https://gifs.example.com,other.example.com".
@@ -126,31 +162,60 @@ func ParseSlinkInstances(value string) (instances []slinkInstance) {
 	return instances
 }
 
-// rating is Giphy's content rating (g, pg, pg-13, r), default pg-13
-func New(giphyKey string, giphyPerHour int, rating string, slink []slinkInstance) *Service {
-	rating = strings.ToLower(strings.TrimSpace(rating))
+func New(options Options) *Service {
+	rating := strings.ToLower(strings.TrimSpace(options.Rating))
 	switch rating {
 	case "g", "pg", "pg-13", "r":
 	default:
 		rating = "pg-13"
 	}
-	if giphyPerHour <= 0 {
-		giphyPerHour = defaultGiphyPerHour
-	}
 
-	return &Service{
-		giphyKey:     giphyKey,
-		giphyPerHour: giphyPerHour,
-		rating:       rating,
-		slink:        slink,
-		client:       &http.Client{Timeout: requestTimeout},
-		giphyBaseURL: "https://api.giphy.com",
-		now:          time.Now,
-		cache:        map[string]cacheEntry{},
+	s := &Service{
+		rating: rating,
+		slink:  options.Slink,
+		client: &http.Client{Timeout: requestTimeout},
+		now:    time.Now,
+		cache:  map[string]cacheEntry{},
 	}
+	if options.GiphyKey != "" {
+		s.apis = append(s.apis, &apiProvider{
+			name:    ProviderGiphy,
+			key:     options.GiphyKey,
+			perHour: positiveOr(options.GiphyPerHour, defaultGiphyPerHour),
+			baseURL: "https://api.giphy.com",
+			hosts:   []string{"*.giphy.com"},
+			search:  s.searchGiphy,
+		})
+	}
+	if options.KlipyKey != "" {
+		s.apis = append(s.apis, &apiProvider{
+			name:    ProviderKlipy,
+			key:     options.KlipyKey,
+			perHour: positiveOr(options.KlipyPerHour, defaultKlipyPerHour),
+			baseURL: "https://api.klipy.com",
+			// Not *.klipy.com, links to klipy.com pages must stay links
+			hosts:  []string{"static.klipy.com"},
+			search: s.searchKlipy,
+		})
+	}
+	return s
 }
 
-func (s *Service) GiphyEnabled() bool { return s.giphyKey != "" }
+func positiveOr(value, fallback int) int {
+	if value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+// The configured API providers (giphy, klipy), searched when a viewer presses enter
+func (s *Service) APIProviders() []string {
+	names := []string{}
+	for _, provider := range s.apis {
+		names = append(names, provider.name)
+	}
+	return names
+}
 
 func (s *Service) SlinkHosts() (hosts []string) {
 	for _, instance := range s.slink {
@@ -162,16 +227,16 @@ func (s *Service) SlinkHosts() (hosts []string) {
 // Hosts GIFs are served from, allowed in chat automatically
 func (s *Service) Hosts() []string {
 	hosts := s.SlinkHosts()
-	if s.GiphyEnabled() {
-		hosts = append(hosts, "*.giphy.com")
+	for _, provider := range s.apis {
+		hosts = append(hosts, provider.hosts...)
 	}
 	return hosts
 }
 
-// Search searches the Slink instances, and Giphy when includeGiphy is set.
-// An empty query lists the newest images of the Slink instances; Giphy is
-// never searched without a query, to save its hourly request budget.
-func (s *Service) Search(ctx context.Context, query string, includeGiphy bool) SearchResult {
+// Search searches the Slink instances, and Giphy and KLIPY when includeAPIs
+// is set. An empty query lists the newest images of the Slink instances; the
+// API providers are never searched without a query, to save their budget.
+func (s *Service) Search(ctx context.Context, query string, includeAPIs bool) SearchResult {
 	query = strings.TrimSpace(query)
 	if len(query) > maxQueryLength {
 		query = query[:maxQueryLength]
@@ -184,8 +249,8 @@ func (s *Service) Search(ctx context.Context, query string, includeGiphy bool) S
 		wait    sync.WaitGroup
 		lock    sync.Mutex
 		result  SearchResult
-		lists   = make([][]GIF, len(s.slink)+1)
-		limited bool
+		lists   = make([][]GIF, len(s.slink)+len(s.apis))
+		limited []string
 	)
 	for i, instance := range s.slink {
 		wait.Go(func() {
@@ -194,18 +259,20 @@ func (s *Service) Search(ctx context.Context, query string, includeGiphy bool) S
 			})
 		})
 	}
-	if includeGiphy && query != "" && s.GiphyEnabled() {
+	for i, provider := range s.apis {
+		if !includeAPIs || query == "" {
+			break
+		}
 		wait.Go(func() {
-			found := s.cached("giphy:"+strings.ToLower(query), giphyCacheDuration, func() ([]GIF, error) {
-				if !s.takeGiphyRequest() {
+			lists[len(s.slink)+i] = s.cached(provider.name+":"+strings.ToLower(query), apiCacheDuration, func() ([]GIF, error) {
+				if !s.takeRequest(provider) {
 					lock.Lock()
-					limited = true
+					limited = append(limited, provider.name)
 					lock.Unlock()
-					return nil, errGiphyLimited
+					return nil, errBudgetUsedUp
 				}
-				return s.searchGiphy(fetchContext, query)
+				return provider.search(fetchContext, provider, query)
 			})
-			lists[len(s.slink)] = found
 		})
 	}
 	wait.Wait()
@@ -218,30 +285,31 @@ func (s *Service) Search(ctx context.Context, query string, includeGiphy bool) S
 			}
 		}
 	}
-	result.GiphyLimited = limited
+	slices.Sort(limited)
+	result.Limited = limited
 	return result
 }
 
-var errGiphyLimited = fmt.Errorf("giphy hourly request budget used up")
+var errBudgetUsedUp = fmt.Errorf("hourly request budget used up")
 
-// Keeps Giphy under its hourly request limit, shared by all viewers
-func (s *Service) takeGiphyRequest() bool {
+// Keeps a provider under its hourly request limit, shared by all viewers
+func (s *Service) takeRequest(provider *apiProvider) bool {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	hourAgo := s.now().Add(-time.Hour)
-	recent := s.giphyRequests[:0]
-	for _, at := range s.giphyRequests {
+	recent := provider.requests[:0]
+	for _, at := range provider.requests {
 		if at.After(hourAgo) {
 			recent = append(recent, at)
 		}
 	}
-	s.giphyRequests = recent
+	provider.requests = recent
 
-	if len(s.giphyRequests) >= s.giphyPerHour {
+	if len(provider.requests) >= provider.perHour {
 		return false
 	}
-	s.giphyRequests = append(s.giphyRequests, s.now())
+	provider.requests = append(provider.requests, s.now())
 	return true
 }
 
@@ -255,10 +323,10 @@ func (s *Service) cached(key string, duration time.Duration, fetch func() ([]GIF
 
 	gifs, err := fetch()
 	if err != nil {
-		if err != errGiphyLimited {
+		if err != errBudgetUsedUp {
 			slog.Error("GIFs: search failed", "search", key, "err", err)
 		} else {
-			slog.Warn("GIFs: Giphy hourly budget used up, showing cached and Slink results only", "perHour", s.giphyPerHour)
+			slog.Warn("GIFs: hourly search budget used up, showing the other results only", "search", key)
 		}
 		return entry.gifs // possibly stale, better than nothing
 	}
@@ -376,9 +444,9 @@ type giphyImage struct {
 	Height string `json:"height"`
 }
 
-func (s *Service) searchGiphy(ctx context.Context, query string) ([]GIF, error) {
+func (s *Service) searchGiphy(ctx context.Context, provider *apiProvider, query string) ([]GIF, error) {
 	params := url.Values{
-		"api_key": {s.giphyKey},
+		"api_key": {provider.key},
 		"limit":   {strconv.Itoa(resultLimit)},
 		"rating":  {s.rating},
 		"q":       {query},
@@ -394,11 +462,10 @@ func (s *Service) searchGiphy(ctx context.Context, query string) ([]GIF, error) 
 			} `json:"images"`
 		} `json:"data"`
 	}
-	if err := s.getJSON(ctx, s.giphyBaseURL+"/v1/gifs/search?"+params.Encode(), &response); err != nil {
+	if err := s.getJSON(ctx, provider.baseURL+"/v1/gifs/search?"+params.Encode(), &response); err != nil {
 		return nil, err
 	}
 
-	hosts := []string{"*.giphy.com"}
 	var gifs []GIF
 	for _, item := range response.Data {
 		full := item.Images.FixedHeight
@@ -418,11 +485,71 @@ func (s *Service) searchGiphy(ctx context.Context, query string) ([]GIF, error) 
 			Provider: ProviderGiphy,
 			Source:   "giphy.com",
 		}
-		if IsAllowedURL(gif.URL, hosts) && IsAllowedURL(gif.Preview, hosts) {
-			gifs = append(gifs, gif)
-		}
+		gifs = appendFromHosts(gifs, gif, provider)
 	}
 	return gifs, nil
+}
+
+// KLIPY's search is a drop-in replacement of Tenor's v2 API
+// (https://github.com/klipycom/Migrate-From-Tenor-To-Klipy)
+func (s *Service) searchKlipy(ctx context.Context, provider *apiProvider, query string) ([]GIF, error) {
+	params := url.Values{
+		"key":           {provider.key},
+		"client_key":    {"broadcast-box"},
+		"q":             {query},
+		"limit":         {strconv.Itoa(resultLimit)},
+		"media_filter":  {"gif,mediumgif,tinygif"},
+		"contentfilter": {map[string]string{"g": "high", "pg": "medium", "pg-13": "low", "r": "off"}[s.rating]},
+	}
+
+	type media struct {
+		URL  string `json:"url"`
+		Dims []int  `json:"dims"`
+	}
+	var response struct {
+		Results []struct {
+			Title              string           `json:"title"`
+			ContentDescription string           `json:"content_description"`
+			MediaFormats       map[string]media `json:"media_formats"`
+		} `json:"results"`
+	}
+	if err := s.getJSON(ctx, provider.baseURL+"/v2/search?"+params.Encode(), &response); err != nil {
+		return nil, err
+	}
+
+	var gifs []GIF
+	for _, item := range response.Results {
+		// Medium size keeps chat light, the full gif can be several MB
+		full, ok := item.MediaFormats["mediumgif"]
+		if !ok || full.URL == "" {
+			full = item.MediaFormats["gif"]
+		}
+		preview, ok := item.MediaFormats["tinygif"]
+		if !ok || preview.URL == "" {
+			preview = full
+		}
+		title := item.Title
+		if title == "" {
+			title = item.ContentDescription
+		}
+		gif := GIF{URL: full.URL, Preview: preview.URL, Title: title, Provider: ProviderKlipy, Source: "klipy.com"}
+		if len(full.Dims) == 2 {
+			gif.Width, gif.Height = full.Dims[0], full.Dims[1]
+		}
+		gifs = appendFromHosts(gifs, gif, provider)
+	}
+	return gifs, nil
+}
+
+// Keeps GIFs served from the provider's own hosts, those are allowed in chat
+func appendFromHosts(gifs []GIF, gif GIF, provider *apiProvider) []GIF {
+	if IsAllowedURL(gif.URL, provider.hosts) && IsAllowedURL(gif.Preview, provider.hosts) {
+		return append(gifs, gif)
+	}
+	if gif.URL != "" {
+		slog.Warn("GIFs: result skipped, not served from the provider's known hosts", "provider", provider.name, "url", gif.URL, "hosts", provider.hosts)
+	}
+	return gifs
 }
 
 // Giphy adds tracking parameters, the file is the same without them

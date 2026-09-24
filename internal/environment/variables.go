@@ -34,6 +34,8 @@ const (
 	ChatGIFHosts        = "CHAT_GIF_HOSTS"
 	GiphyAPIKey         = "GIPHY_API_KEY"
 	GiphyHourlyLimit    = "GIPHY_HOURLY_LIMIT"
+	KlipyAPIKey         = "KLIPY_API_KEY"
+	KlipyHourlyLimit    = "KLIPY_HOURLY_LIMIT"
 	SlinkInstances      = "SLINK_INSTANCES"
 	TenorAPIKey         = "TENOR_API_KEY" // no longer supported, only warned about
 	GIFContentRating    = "GIF_CONTENT_RATING"
