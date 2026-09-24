@@ -29,12 +29,16 @@ func CreateNewWHEP(
 		PeerConnection:          peerConnection,
 		pliSender:               pliSender,
 		videoBitrateWindowStart: time.Now(),
+		sendQueue:               make(chan queuedPacket, sendQueueSize),
+		closed:                  make(chan struct{}),
 	}
 
 	w.AudioLayerCurrent.Store("")
 	w.VideoLayerCurrent.Store("")
 	w.IsWaitingForKeyframe.Store(true)
 	w.IsSessionClosed.Store(false)
+
+	go w.runSender()
 	return w
 }
 
@@ -44,6 +48,7 @@ func (w *WHEPSession) Close() {
 	w.SessionClose.Do(func() {
 		slog.Debug("WHEPSession.Close")
 		w.IsSessionClosed.Store(true)
+		close(w.closed)
 
 		// Close PeerConnection
 		slog.Debug("WHEPSession.Close.PeerConnection.GracefulClose")
@@ -126,8 +131,16 @@ func (w *WHEPSession) SetVideoLayer(encodingID string) {
 	w.SendPLI()
 }
 
+// Requests a keyframe from the publisher. Limited per viewer, as it is called
+// for every packet while the viewer waits for a keyframe.
 func (w *WHEPSession) SendPLI() {
 	if w.IsSessionClosed.Load() {
+		return
+	}
+
+	now := time.Now().UnixNano()
+	last := w.lastPLI.Load()
+	if now-last < int64(pliInterval) || !w.lastPLI.CompareAndSwap(last, now) {
 		return
 	}
 

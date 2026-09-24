@@ -14,8 +14,6 @@ import (
 	"github.com/pion/rtp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
-
-	pionCodecs "github.com/pion/rtp/codecs"
 )
 
 func (w *WHIPSession) audioWriter(remoteTrack *webrtc.TrackRemote, streamKey string) {
@@ -63,12 +61,12 @@ func (w *WHIPSession) audioWriter(remoteTrack *webrtc.TrackRemote, streamKey str
 
 		packet := codecs.TrackPacket{
 			Layer:  id,
-			Packet: rtpPkt,
+			Packet: sharedPacketCopy(rtpPkt),
 			Codec:  codec,
 		}
 
 		for _, whepSession := range sessions {
-			whepSession.SendAudioPacket(packet)
+			whepSession.QueueAudioPacket(packet)
 		}
 	}
 }
@@ -88,24 +86,6 @@ func (w *WHIPSession) videoWriter(remoteTrack *webrtc.TrackRemote, streamKey str
 	}
 	track.Priority = w.getPrioritizedStreamingLayer(id, peerConnection.CurrentRemoteDescription().SDP)
 	track.MediaSSRC.Store(uint32(remoteTrack.SSRC()))
-
-	var depacketizer rtp.Depacketizer
-	switch codec {
-	case codecs.VideoTrackCodecH264:
-		depacketizer = &pionCodecs.H264Packet{}
-	case codecs.VideoTrackCodecH265:
-		depacketizer = &pionCodecs.H265Depacketizer{}
-	case codecs.VideoTrackCodecVP8:
-		depacketizer = &pionCodecs.VP8Packet{}
-	case codecs.VideoTrackCodecVP9:
-		depacketizer = &pionCodecs.VP9Packet{}
-	case codecs.VideoTrackCodecAV1:
-		depacketizer = &pionCodecs.AV1Depacketizer{}
-	}
-
-	if depacketizer == nil {
-		slog.Error("WHIPSession.VideoWriter.Depacketizer: No depacketizer was found for codec", "codec", codec)
-	}
 
 	lastTimestamp := uint32(0)
 	lastTimestampSet := false
@@ -149,7 +129,7 @@ func (w *WHIPSession) videoWriter(remoteTrack *webrtc.TrackRemote, streamKey str
 		track.PacketsReceived.Add(1)
 		bitrateWindowBytes += uint64(rtpRead)
 
-		isKeyframe := isPacketKeyframe(rtpPkt, codec, depacketizer)
+		isKeyframe := codecs.IsKeyframe(rtpPkt.Payload, codec)
 		if isKeyframe {
 			track.LastKeyFrame.Store(time.Now())
 		}
@@ -187,19 +167,25 @@ func (w *WHIPSession) videoWriter(remoteTrack *webrtc.TrackRemote, streamKey str
 			sessions = sessionsAny.(map[string]*whep.WHEPSession)
 		}
 
+		if len(sessions) == 0 {
+			continue
+		}
+
+		packet := codecs.TrackPacket{
+			Layer:        id,
+			Packet:       sharedPacketCopy(rtpPkt),
+			Codec:        codec,
+			IsKeyframe:   isKeyframe,
+			TimeDiff:     timeDiff,
+			SequenceDiff: sequenceDiff,
+		}
+
 		for _, whepSession := range sessions {
 			if whepSession.GetVideoLayerOrDefault(id, track.Priority) != id {
 				continue
 			}
 
-			whepSession.SendVideoPacket(codecs.TrackPacket{
-				Layer:        id,
-				Packet:       rtpPkt,
-				Codec:        codec,
-				IsKeyframe:   isKeyframe,
-				TimeDiff:     timeDiff,
-				SequenceDiff: sequenceDiff,
-			})
+			whepSession.QueueVideoPacket(packet)
 		}
 	}
 }
@@ -209,27 +195,19 @@ func isTrackClosedError(err error) bool {
 	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) || errors.Is(err, net.ErrClosed)
 }
 
-const (
-	naluTypeBitmask = 0x1f
+// Copies a received packet so it can be shared by all viewer send queues,
+// the read buffer it was parsed from is reused for the next packet.
+func sharedPacketCopy(packet *rtp.Packet) *rtp.Packet {
+	header := packet.Header
+	header.CSRC = nil
+	header.Padding = false
+	header.Extension = false
+	header.Extensions = nil
 
-	idrNALUType = 5
-	spsNALUType = 7
-	ppsNALUType = 8
-)
-
-func isPacketKeyframe(pkt *rtp.Packet, codec codecs.TrackCodeType, depacketizer rtp.Depacketizer) bool {
-	if codec == codecs.VideoTrackCodecH264 {
-		nalu, err := depacketizer.Unmarshal(pkt.Payload)
-
-		if err != nil || len(nalu) < 6 {
-			return false
-		}
-
-		firstNaluType := nalu[4] & naluTypeBitmask
-		return firstNaluType == idrNALUType || firstNaluType == spsNALUType || firstNaluType == ppsNALUType
+	return &rtp.Packet{
+		Header:  header,
+		Payload: append([]byte(nil), packet.Payload...),
 	}
-
-	return true
 }
 
 // Helper function for getting the simulcast order and using as priority for consumers

@@ -52,6 +52,7 @@ const (
 	UDPMuxPortWHIP           = "UDP_MUX_PORT_WHIP"
 	UDPMuxPortWHEP           = "UDP_MUX_PORT_WHEP"
 	UDPMuxReadBufferSize     = "UDP_MUX_READ_BUFFER_SIZE"
+	MaxViewersPerStream      = "MAX_VIEWERS_PER_STREAM"
 	NAT1To1IP                = "NAT_1_TO_1_IP"
 	NATICECandidateType      = "NAT_ICE_CANDIDATE_TYPE"
 

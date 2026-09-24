@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -70,7 +71,11 @@ func whepHandler(responseWriter http.ResponseWriter, request *http.Request) {
 	whipAnswer, sessionID, err := webrtc.WHEP(string(offer), token)
 	if err != nil {
 		slog.Error("API.WHEP: Setup Error", "err", err)
-		helpers.LogHTTPError(responseWriter, err.Error(), http.StatusBadRequest)
+		status := http.StatusBadRequest
+		if errors.Is(err, webrtc.ErrStreamFull) {
+			status = http.StatusServiceUnavailable
+		}
+		helpers.LogHTTPError(responseWriter, err.Error(), status)
 		return
 	}
 

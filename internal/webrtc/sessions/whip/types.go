@@ -17,7 +17,11 @@ type (
 		onConnected    func()
 
 		// Unix nanoseconds of the last received media packet, or of creation
-		lastActivity       atomic.Int64
+		lastActivity atomic.Int64
+
+		// Unix nanoseconds of the last keyframe request sent to the publisher
+		lastPLI atomic.Int64
+
 		PeerConnectionLock sync.RWMutex
 
 		// Protects AudioTrack, VideoTracks

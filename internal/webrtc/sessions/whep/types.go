@@ -10,6 +10,11 @@ import (
 )
 
 type (
+	queuedPacket struct {
+		packet  codecs.TrackPacket
+		isAudio bool
+	}
+
 	WHEPSession struct {
 		SessionID            string
 		StreamKey            string
@@ -19,6 +24,12 @@ type (
 		SessionClose sync.Once
 		onClose      func(string)
 		pliSender    func()
+		lastPLI      atomic.Int64
+
+		// Packets waiting to be sent by this viewer's sender goroutine, so a
+		// slow viewer never blocks the publisher's ingest loop
+		sendQueue chan queuedPacket
+		closed    chan struct{}
 
 		PeerConnectionLock sync.RWMutex
 		PeerConnection     *webrtc.PeerConnection
