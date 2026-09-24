@@ -58,6 +58,9 @@ func (w *WHIPSession) onConnectionStateChange() func(webrtc.PeerConnectionState)
 
 		case webrtc.PeerConnectionStateConnected:
 			slog.Info("WHIPSession.PeerConnection.OnConnectionStateChange: Host connected", "id", w.ID)
+			if w.onConnected != nil {
+				w.onConnected()
+			}
 
 		}
 	}

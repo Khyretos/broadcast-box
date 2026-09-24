@@ -14,6 +14,7 @@ type (
 		PeerConnection     *webrtc.PeerConnection
 		closeOnce          sync.Once
 		onClosed           func()
+		onConnected        func()
 		PeerConnectionLock sync.RWMutex
 
 		// Protects AudioTrack, VideoTracks

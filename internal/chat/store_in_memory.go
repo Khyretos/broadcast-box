@@ -44,8 +44,8 @@ type InMemoryStore struct {
 func envBool(key string) bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
 	switch v {
-		case "1", "true", "yes", "on":
-			return true
+	case "1", "true", "yes", "on":
+		return true
 	}
 	return false
 }
@@ -70,7 +70,7 @@ func NewInMemoryStore(maxHistory int) *InMemoryStore {
 		s.ssnVerbose = envBool("SSN_VERBOSE")
 		go s.ssnWebSocketLoop()
 		log.Printf("SSN: forwarding enabled, target=%s session=%s verbose=%v",
-			   s.ssnURL, s.ssnSession, s.ssnVerbose)
+			s.ssnURL, s.ssnSession, s.ssnVerbose)
 	}
 
 	return s
@@ -347,8 +347,8 @@ func (s *InMemoryStore) sendToRoom(streamKey string, r *room, text string, displ
 
 	for _, sub := range r.subscribers {
 		select {
-			case sub.ch <- event:
-			default:
+		case sub.ch <- event:
+		default:
 		}
 	}
 

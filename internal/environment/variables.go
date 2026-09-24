@@ -30,6 +30,12 @@ const (
 	ChatDefaultTTL      = "CHAT_DEFAULT_TTL"
 	ChatCleanupInterval = "CHAT_CLEANUP_INTERVAL"
 
+	// NOTIFICATIONS
+	DiscordWebhookURL        = "DISCORD_WEBHOOK_URL"
+	PublicURL                = "PUBLIC_URL"
+	NotifyOfflineGracePeriod = "NOTIFY_OFFLINE_GRACE_PERIOD"
+	NotifyStreamKeys         = "NOTIFY_STREAM_KEYS"
+
 	// WEBRTC
 	IncludeLoopbackCandidate = "INCLUDE_LOOPBACK_CANDIDATE"
 	NetworkTypes             = "NETWORK_TYPES"
@@ -39,6 +45,7 @@ const (
 	UDPMuxPort               = "UDP_MUX_PORT"
 	UDPMuxPortWHIP           = "UDP_MUX_PORT_WHIP"
 	UDPMuxPortWHEP           = "UDP_MUX_PORT_WHEP"
+	UDPMuxReadBufferSize     = "UDP_MUX_READ_BUFFER_SIZE"
 	NAT1To1IP                = "NAT_1_TO_1_IP"
 	NATICECandidateType      = "NAT_ICE_CANDIDATE_TYPE"
 

@@ -11,6 +11,10 @@ func (w *WHIPSession) SetOnClosed(onClosed func()) {
 	w.onClosed = onClosed
 }
 
+func (w *WHIPSession) SetOnConnected(onConnected func()) {
+	w.onConnected = onConnected
+}
+
 func (w *WHIPSession) notifyClosed() {
 	w.closeOnce.Do(func() {
 		if w.onClosed != nil {

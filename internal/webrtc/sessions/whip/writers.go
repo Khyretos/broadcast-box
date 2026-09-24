@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"net"
 	"strings"
 	"time"
 
@@ -36,12 +37,13 @@ func (w *WHIPSession) audioWriter(remoteTrack *webrtc.TrackRemote, streamKey str
 	for {
 		rtpRead, _, err := remoteTrack.Read(rtpBuf)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			if isTrackClosedError(err) {
 				slog.Info("WHIPSession.AudioWriter.RtpPkt.EndOfStream")
 				return
-			} else {
-				slog.Error("WHIPSession.AudioWriter.RtpPkt.Err", "err", err)
 			}
+
+			slog.Error("WHIPSession.AudioWriter.RtpPkt.Err", "err", err)
+			continue
 		}
 
 		track.PacketsReceived.Add(1)
@@ -117,13 +119,14 @@ func (w *WHIPSession) videoWriter(remoteTrack *webrtc.TrackRemote, streamKey str
 	for {
 		rtpRead, _, err := remoteTrack.Read(pktBuf)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			if isTrackClosedError(err) {
 				slog.Info("WHIPSession.VideoWriter.RtpPkt.EndOfStream")
 				w.notifyClosed()
 				return
-			} else {
-				slog.Error("WHIPSession.VideoWriter.RtpPkt.Err", "err", err)
 			}
+
+			slog.Error("WHIPSession.VideoWriter.RtpPkt.Err", "err", err)
+			continue
 		}
 
 		if rtpRead == 0 {
@@ -195,6 +198,11 @@ func (w *WHIPSession) videoWriter(remoteTrack *webrtc.TrackRemote, streamKey str
 			})
 		}
 	}
+}
+
+// Errors returned by TrackRemote.Read once the track or its transport is gone
+func isTrackClosedError(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) || errors.Is(err, net.ErrClosed)
 }
 
 const (

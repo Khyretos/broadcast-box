@@ -25,6 +25,7 @@
 - [Environment Variables](#environment-variables)
 - [CLI Flags](#cli-flags)
 - [Stream Profile Policy](#stream-profile-policy)
+- [Stream Notifications](#stream-notifications)
 - [Webhooks](#webhooks)
 - [Network Test on Start](#network-test-on-start)
 - [Design](#design)
@@ -308,6 +309,7 @@ The frontend can be configured by passing these URL Parameters.
 | `NETWORK_TYPES`                      | List of network types to use delineated by `\|` (e.g.,`udp4 \|udp6`).     |
 | `INCLUDE_LOOPBACK_CANDIDATE`         | Enables WebRTC traffic on loopback interface.                             |
 | `UDP_MUX_PORT`                       | Port to multiplex all UDP traffic. Uses random port by default.           |
+| `UDP_MUX_READ_BUFFER_SIZE` | Socket receive buffer size in bytes for the UDP mux. Default is `8388608` (8 MiB), capped by the kernel at `net.core.rmem_max`. |
 | `UDP_MUX_PORT_WHEP`                  | Port to multiplex WHEP traffic only.                                      |
 | `UDP_MUX_PORT_WHIP`                  | Port to multiplex WHIP traffic only.                                      |
 | `TCP_MUX_ADDRESS`                    | Address to serve WebRTC traffic over TCP.                                 |
@@ -386,6 +388,20 @@ The `STREAM_PROFILE_POLICY` environment variable controls who is allowed to init
 | `RESERVED`             | Only users with a valid token **and** a reserved stream key are allowed to stream. This is the most restrictive mode. |
 
 Any other value currently falls back to `ANYONE_WITH_RESERVED` behavior.
+
+## Stream Notifications
+
+Broadcast Box can post a message to Discord (or any webhook that accepts a JSON `content`/`text`/`message` field, such as
+Slack or Mattermost) when a stream goes live, and update it when the stream ends.
+
+| Variable                      | Description                                                                                                                              |
+|-------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `DISCORD_WEBHOOK_URL`         | Webhook to post notifications to. Notifications are disabled when unset.                                                               |
+| `PUBLIC_URL`                  | Public URL of the frontend, used to link to `<PUBLIC_URL>/<streamKey>`. When unset only the stream key is posted.                       |
+| `NOTIFY_OFFLINE_GRACE_PERIOD` | How long a stream may be disconnected before it is announced as ended, so encoder reconnects don't spam the channel. Default is `60s`. |
+| `NOTIFY_STREAM_KEYS`          | Optional comma separated list of stream keys to notify for. All streams are announced when unset.                                     |
+
+For Discord the original "live" message is edited to show the stream has ended, including its duration.
 
 ## Webhooks
 
