@@ -148,7 +148,7 @@ func (f *ssnForwarder) run() {
 		slog.Info("SSN: connected")
 		connectedAt := time.Now()
 		pending, err = f.serve(conn, pending)
-		conn.Close()
+		_ = conn.Close()
 
 		// Only reset the backoff if the connection was usable for a while, so a
 		// server that accepts and immediately drops us isn't hammered.

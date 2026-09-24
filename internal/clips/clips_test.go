@@ -66,7 +66,7 @@ func splitArgs(args string) []string {
 func pushAudio(t *testing.T, r *Recorder, audioFile string, epoch time.Time) {
 	file, err := os.Open(audioFile)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	ogg, _, err := oggreader.NewWith(file)
 	require.NoError(t, err)
@@ -216,7 +216,7 @@ func TestClipH264(t *testing.T) {
 
 	file, err := os.Open(videoFile)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	reader, err := h264reader.NewReader(file)
 	require.NoError(t, err)
 
@@ -249,7 +249,7 @@ func TestClipAV1(t *testing.T) {
 
 	file, err := os.Open(videoFile)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	reader, _, err := ivfreader.NewWith(file)
 	require.NoError(t, err)
 

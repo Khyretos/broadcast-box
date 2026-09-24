@@ -308,7 +308,7 @@ func (n *Notifier) send(body []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if !n.isDiscord {
 		return "", nil
@@ -349,7 +349,7 @@ func (n *Notifier) do(method, url string, body []byte) (*http.Response, error) {
 
 	if resp.StatusCode >= 300 {
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("webhook returned %d: %s", resp.StatusCode, responseBody)
 	}
 

@@ -165,7 +165,7 @@ func (r *linkResolver) fromKlipyPage(ctx context.Context, pageURL string) (*GIF,
 	if err != nil {
 		return nil, fmt.Errorf("page request failed: %w", unwrapURLError(err))
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("page returned %d", response.StatusCode)
 	}

@@ -358,7 +358,7 @@ func (s *Service) getJSON(ctx context.Context, requestURL string, target any) er
 		// The error contains the URL, which may contain an API key
 		return fmt.Errorf("request failed: %w", unwrapURLError(err))
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	switch {
 	case response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden:

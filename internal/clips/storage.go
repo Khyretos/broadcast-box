@@ -62,10 +62,10 @@ func (s *localStorage) Save(_ context.Context, key string, reader io.Reader, _ i
 	if err != nil {
 		return err
 	}
-	defer os.Remove(file.Name())
+	defer func() { _ = os.Remove(file.Name()) }()
 
 	if _, err := io.Copy(file, reader); err != nil {
-		file.Close()
+		_ = file.Close()
 		return err
 	}
 	if err := file.Close(); err != nil {
@@ -117,7 +117,7 @@ func (s *localStorage) Serve(w http.ResponseWriter, r *http.Request, key string,
 		http.Error(w, ErrNotFound.Error(), http.StatusNotFound)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	stat, err := file.Stat()
 	if err != nil {
@@ -204,7 +204,7 @@ func (s *s3Storage) Read(ctx context.Context, key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer object.Close()
+	defer func() { _ = object.Close() }()
 
 	data, err := io.ReadAll(object)
 	if minio.ToErrorResponse(err).Code == "NoSuchKey" {

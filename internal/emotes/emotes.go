@@ -222,7 +222,7 @@ func (s *Service) getJSON(ctx context.Context, provider, path string, target any
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode == http.StatusNotFound {
 		slog.Info("Emotes: not found at provider, the channel may not use it", "provider", provider, "path", path)

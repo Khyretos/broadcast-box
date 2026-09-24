@@ -56,7 +56,7 @@ func (t *twitchClient) accessToken(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("twitch token request returned %d, check TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET", response.StatusCode)
@@ -106,7 +106,7 @@ func (s *Service) fetchTwitch(ctx context.Context, path string) ([]Emote, error)
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode == http.StatusUnauthorized {
 		s.twitch.lock.Lock()

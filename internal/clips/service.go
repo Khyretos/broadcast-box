@@ -194,7 +194,7 @@ func (s *Service) CreateDraft(streamKey string, recorder *Recorder) (*Draft, err
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var start time.Duration
 	started := false
@@ -211,7 +211,7 @@ func (s *Service) CreateDraft(streamKey string, recorder *Recorder) (*Draft, err
 			size:     frame.Size,
 		})
 	}); err != nil {
-		os.Remove(draft.path)
+		_ = os.Remove(draft.path)
 		return nil, err
 	}
 
@@ -253,7 +253,7 @@ func (s *Service) ServeDraft(w http.ResponseWriter, r *http.Request, id string) 
 		http.Error(w, ErrDraftNotFound.Error(), http.StatusNotFound)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	w.Header().Set("Content-Type", "video/x-matroska")
 	w.Header().Set("Cache-Control", "private, max-age=600")
@@ -284,7 +284,7 @@ func (s *Service) Publish(ctx context.Context, id string, start, end float64, ti
 	if err != nil {
 		return nil, ErrDraftNotFound
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	muxFrames := make([]MuxFrame, len(frames))
 	for i, frame := range frames {
@@ -459,7 +459,7 @@ func (s *Service) cleanupLoop() {
 		s.lock.Lock()
 		for id, draft := range s.drafts {
 			if time.Since(draft.createdAt) > draftTTL {
-				os.Remove(draft.path)
+				_ = os.Remove(draft.path)
 				delete(s.drafts, id)
 			}
 		}
@@ -480,7 +480,7 @@ func (s *Service) removeOldestDraftLocked() {
 		}
 	}
 	if oldest != nil {
-		os.Remove(oldest.path)
+		_ = os.Remove(oldest.path)
 		delete(s.drafts, oldest.ID)
 	}
 }

@@ -143,7 +143,7 @@ func (s *Service) search7TV(ctx context.Context, query string) ([]Emote, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("7tv search returned %d", response.StatusCode)
 	}
