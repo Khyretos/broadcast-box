@@ -19,7 +19,7 @@ import (
 // This is the maximum inbound message size for every data channel on a peer connection.
 // 256 KiB matches Chrome's default maximum message size.
 // Source: https://webrtc.googlesource.com/src/+/refs/heads/main/api/sctp_transport_interface.h#156
-const maxDataChannelMessageBytes uint32 = 256 * 1024 + 1
+const maxDataChannelMessageBytes uint32 = 256*1024 + 1
 
 func getSettingEngine(isWHIP bool, tcpMuxCache map[string]ice.TCPMux, udpMuxCache map[int]*ice.MultiUDPMuxDefault) (settingEngine webrtc.SettingEngine) {
 	var (
@@ -91,9 +91,16 @@ func setupTCPMux(settingEngine *webrtc.SettingEngine, tcpMuxCache map[string]ice
 	}
 }
 
+// Default socket receive buffer for the UDP mux. High bitrate/high framerate
+// streams send keyframes in bursts that overflow the small Linux default
+// (~208 KiB), which shows up as packet loss and stutter. The kernel caps this
+// value at net.core.rmem_max.
+const defaultUDPMuxReadBufferSize = 8 * 1024 * 1024
+
 func setupUDPMux(settingEngine *webrtc.SettingEngine, isWHIP bool, udpMuxCache map[int]*ice.MultiUDPMuxDefault, udpMuxOpts []ice.UDPMuxFromPortOption) {
 	// Use UDP Mux port if set
 	if udpMuxPort := getUDPMuxPort(isWHIP); udpMuxPort != 0 {
+		udpMuxOpts = append(udpMuxOpts, ice.UDPMuxFromPortWithReadBufferSize(getUDPMuxReadBufferSize()))
 		setUDPMuxPort(isWHIP, udpMuxPort, udpMuxCache, udpMuxOpts, settingEngine)
 	}
 }
@@ -109,6 +116,21 @@ func setupInterfaceFilter(settingEngine *webrtc.SettingEngine, muxOpts *[]ice.UD
 		settingEngine.SetInterfaceFilter(interfaceFilter)
 		*muxOpts = append(*muxOpts, ice.UDPMuxFromPortWithInterfaceFilter(interfaceFilter))
 	}
+}
+
+func getUDPMuxReadBufferSize() int {
+	value := os.Getenv(environment.UDPMuxReadBufferSize)
+	if value == "" {
+		return defaultUDPMuxReadBufferSize
+	}
+
+	size, err := strconv.Atoi(value)
+	if err != nil {
+		slog.Error("Configuration error", "err", err)
+		os.Exit(1)
+	}
+
+	return size
 }
 
 func getTCPMuxAddress() *net.TCPAddr {

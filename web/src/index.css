@@ -51,3 +51,30 @@
 		}
 	}
 }
+
+/* Two stacked range inputs form one track with a start and end handle:
+   only the handles take pointer events */
+.clip-range-thumb::-webkit-slider-thumb {
+	pointer-events: auto;
+	appearance: none;
+	width: 14px;
+	height: 28px;
+	border-radius: 4px;
+	background: #f4f4f5;
+	border: 2px solid #a855f7;
+	cursor: ew-resize;
+}
+
+.clip-range-thumb::-moz-range-thumb {
+	pointer-events: auto;
+	width: 10px;
+	height: 24px;
+	border-radius: 4px;
+	background: #f4f4f5;
+	border: 2px solid #a855f7;
+	cursor: ew-resize;
+}
+
+.clip-range-thumb::-moz-range-track {
+	background: transparent;
+}

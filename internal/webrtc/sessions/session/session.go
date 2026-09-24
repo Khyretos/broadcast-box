@@ -3,7 +3,9 @@ package session
 import (
 	"fmt"
 	"log/slog"
+	"time"
 
+	"github.com/glimesh/broadcast-box/internal/notify"
 	"github.com/glimesh/broadcast-box/internal/server/authorization"
 	"github.com/glimesh/broadcast-box/internal/webrtc/codecs"
 	"github.com/glimesh/broadcast-box/internal/webrtc/sessions/whep"
@@ -51,23 +53,24 @@ func (s *Session) AddWHEP(whepSessionID string, peerConnection *webrtc.PeerConne
 	return nil
 }
 
+// Time without media after which a new publisher may replace the current one
+const hostTakeoverTimeout = 5 * time.Second
+
 // Add host
 func (s *Session) AddHost(peerConnection *webrtc.PeerConnection) (err error) {
 	slog.Debug("Session.AddHost")
 
-	for {
-		host := s.Host.Load()
-		if host == nil {
-			break
+	// A publisher that reconnects (e.g. OBS after a network hiccup) replaces the
+	// previous connection, instead of being rejected until the old one times out.
+	// A host that is still sending media can not be replaced, as the stream key
+	// alone is enough to publish to streams without a reserved profile.
+	if existingHost := s.Host.Load(); existingHost != nil {
+		if existingHost.IsActive(hostTakeoverTimeout) {
+			return fmt.Errorf("stream already has an active publisher")
 		}
 
-		if host.PeerConnection.ConnectionState() != webrtc.PeerConnectionStateClosed {
-			return fmt.Errorf("session already has a host")
-		}
-
-		if s.Host.CompareAndSwap(host, nil) {
-			break
-		}
+		slog.Info("Session.AddHost: Replacing existing host", "streamKey", s.StreamKey, "previousID", existingHost.ID)
+		s.removeHost(existingHost)
 	}
 
 	host := &whip.WHIPSession{
@@ -75,7 +78,13 @@ func (s *Session) AddHost(peerConnection *webrtc.PeerConnection) (err error) {
 		AudioTracks: make(map[string]*whip.AudioTrack),
 		VideoTracks: make(map[string]*whip.VideoTrack),
 	}
-	host.SetOnClosed(s.handleHostClosed)
+	host.MarkActive()
+	host.Recorder = s.Recorder
+	if s.Recorder != nil {
+		s.Recorder.Reset()
+	}
+	host.SetOnClosed(func() { s.handleHostClosed(host) })
+	host.SetOnConnected(func() { notify.StreamOnline(s.StreamKey) })
 
 	host.AddPeerConnection(peerConnection, s.StreamKey)
 	s.registerDataChannelHandlers(peerConnection, host.ID)
@@ -93,19 +102,31 @@ func (s *Session) AddHost(peerConnection *webrtc.PeerConnection) (err error) {
 }
 
 func (s *Session) RemoveHost() {
-
-	host := s.Host.Swap(nil)
+	host := s.Host.Load()
 	if host == nil {
 		slog.Info("Session.RemoveHost", "streamKey", s.StreamKey, "msg", "No host to remove")
 		return
 	}
 
-	slog.Info("Session.RemoveHost", "streamKey", s.StreamKey)
+	s.removeHost(host)
+}
+
+// Removes the given host if it is still the current one. Returns false if the
+// host had already been removed or replaced.
+func (s *Session) removeHost(host *whip.WHIPSession) bool {
+	if !s.Host.CompareAndSwap(host, nil) {
+		return false
+	}
+
+	slog.Info("Session.RemoveHost", "streamKey", s.StreamKey, "id", host.ID)
 	s.HasHost.Store(false)
 
 	host.WHEPSessionsSnapshot.Store(make(map[string]*whep.WHEPSession))
 	host.RemovePeerConnection()
 	host.RemoveTracks()
+
+	notify.StreamOffline(s.StreamKey)
+	return true
 }
 
 func (s *Session) handleWHEPClose(whepSessionID string) {
@@ -129,8 +150,11 @@ func (s *Session) handleWHEPClose(whepSessionID string) {
 	}
 }
 
-func (s *Session) handleHostClosed() {
-	s.RemoveHost()
+func (s *Session) handleHostClosed(host *whip.WHIPSession) {
+	// Ignore close events from a host that was already replaced by a reconnect
+	if !s.removeHost(host) {
+		return
+	}
 
 	if s.isEmpty() {
 		s.close()
@@ -154,6 +178,10 @@ func (s *Session) close() {
 		s.updateHostWHEPSessionsSnapshot()
 
 		s.RemoveHost()
+
+		if s.Recorder != nil {
+			s.Recorder.Close()
+		}
 
 		if s.onClose != nil {
 			s.onClose()

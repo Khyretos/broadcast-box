@@ -40,3 +40,9 @@ BroadcastBox.exe
 
 # Go vendors
 /vendor
+
+# local compose settings, contains secrets
+.env
+
+# clips recorded by docker compose
+/clips

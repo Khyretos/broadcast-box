@@ -6,11 +6,18 @@ import (
 
 	"github.com/glimesh/broadcast-box/internal/webrtc/chatdc"
 	"github.com/pion/webrtc/v4"
+	"golang.org/x/time/rate"
 )
 
 const (
-	dataChannelLabel           = "bb-data-v1"
-	dataChannelMaxPayloadBytes = 256 * 1024
+	dataChannelLabel = "bb-data-v1"
+
+	// Every relayed message is sent to all viewers, keep them small
+	dataChannelMaxPayloadBytes = 4 * 1024
+
+	// Messages per second (and burst) a single viewer may send
+	dataChannelRateLimit = 5
+	dataChannelRateBurst = 10
 )
 
 type dataChannelSender interface {
@@ -41,6 +48,7 @@ func (s *Session) bindDataChannel(peerID string, dataChannel *webrtc.DataChannel
 		peer     *dataChannelPeer
 		peerLock sync.Mutex
 		isClosed bool
+		limiter  = rate.NewLimiter(dataChannelRateLimit, dataChannelRateBurst)
 	)
 
 	register := func() *dataChannelPeer {
@@ -83,6 +91,14 @@ func (s *Session) bindDataChannel(peerID string, dataChannel *webrtc.DataChannel
 			if err := dataChannel.Close(); err != nil {
 				slog.Error("DataDC.Bind: close oversized payload sender error", "streamKey", s.StreamKey, "peerID", peerID, "err", err)
 			}
+			return
+		}
+
+		if !limiter.Allow() {
+			return
+		}
+
+		if msg.IsString && s.handleReactionMessage(msg.Data) {
 			return
 		}
 
@@ -147,6 +163,22 @@ func (s *Session) broadcastDataChannelFrom(sender *dataChannelPeer, payload []by
 	}
 	s.dataChannelPeersLock.RUnlock()
 
+	s.sendToDataChannelPeers(recipients, sender.id, payload, isString)
+}
+
+// Sends a text payload to every connected data channel peer
+func (s *Session) broadcastDataChannel(payload []byte) {
+	s.dataChannelPeersLock.RLock()
+	recipients := make([]*dataChannelPeer, 0, len(s.dataChannelPeers))
+	for _, peer := range s.dataChannelPeers {
+		recipients = append(recipients, peer)
+	}
+	s.dataChannelPeersLock.RUnlock()
+
+	s.sendToDataChannelPeers(recipients, "server", payload, true)
+}
+
+func (s *Session) sendToDataChannelPeers(recipients []*dataChannelPeer, senderID string, payload []byte, isString bool) {
 	var wg sync.WaitGroup
 	for _, recipient := range recipients {
 		wg.Go(func() {
@@ -154,7 +186,7 @@ func (s *Session) broadcastDataChannelFrom(sender *dataChannelPeer, payload []by
 				slog.Error(
 					"DataDC.Broadcast: send error",
 					"streamKey", s.StreamKey,
-					"senderPeerID", sender.id,
+					"senderPeerID", senderID,
 					"recipientPeerID", recipient.id,
 					"err", err,
 				)

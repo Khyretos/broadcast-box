@@ -7,6 +7,8 @@ export interface Message {
 	ts: number;
 	text: string;
 	displayName: string;
+	// Emote code to image URL for emotes used in the message
+	emotes?: Record<string, string>;
 }
 
 export interface ChatAdapter {
@@ -16,7 +18,7 @@ export interface ChatAdapter {
 		onStatus: (status: ChatStatus) => void,
 		onError: (error: string) => void,
 	): () => void;
-	send(text: string, displayName: string): Promise<void>;
+	send(text: string, displayName: string, emotes?: Record<string, string>): Promise<void>;
 }
 
 const MAX_MESSAGES = 1000;
@@ -94,13 +96,13 @@ export const useChatSession = (streamKey: string, adapter?: ChatAdapter, connect
 	}, [adapter, streamKey, connectionErrorMessage]);
 
 	const sendMessage = useCallback(
-		async (text: string, displayName: string, notConnectedErrorMessage?: string) => {
+		async (text: string, displayName: string, notConnectedErrorMessage?: string, emotes?: Record<string, string>) => {
 			if (!adapter) {
 				throw new Error(notConnectedErrorMessage ?? "Chat is not connected");
 			}
 
 			setError(null);
-			await adapter.send(text, displayName);
+			await adapter.send(text, displayName, emotes);
 		},
 		[adapter],
 	);

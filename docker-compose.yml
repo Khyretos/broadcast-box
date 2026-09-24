@@ -1,42 +1,72 @@
 services:
   broadcast-box:
+    build: .
     image: broadcast-box-ssn
-    build: ./broadcast-box
     hostname: broadcast-box
     container_name: broadcast-box
-    devices:
-      - /dev/dri/renderD128:/dev/dri/renderD128
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       UDP_MUX_PORT: 8181
-      INCLUDE_PUBLIC_IP_IN_NAT_1_TO_1_IP: yes
+      INCLUDE_PUBLIC_IP_IN_NAT_1_TO_1_IP: "yes"
       NAT_1_TO_1_IP: ${IP_ADDRESS}
-      NETWORK_TEST_ON_START: false
+      NETWORK_TEST_ON_START: "false"
       FRONTEND_ADMIN_TOKEN: ${FRONTEND_ADMIN_TOKEN}
       STREAM_PROFILE_PATH: /app/profiles
-#      STREAM_PROFILE_POLICY: ${STREAM_PROFILE_POLICY}
-      WEBHOOK_URL: ${WEBHOOK_URL}
-      SSN_SESSION_ID: ${SSN_SESSION_ID}
-      SSN_VERBOSE: ${SSN_VERBOSE:-false}
-      WATCH_STREAM_KEY: ${WATCH_STREAM_KEY}
-    ports:
-      - "8181:8181/tcp"
-      - "8181:8181/udp"
-    networks:
-      - outside
+      STREAM_PROFILE_POLICY: ${STREAM_PROFILE_POLICY:-ANYONE_WITH_RESERVED}
 
-  webhookserver:
-    build: ./webhook_server
-    container_name: broadcast-box-webhookserver
-    environment:
-      WEBHOOK_ENABLED_STREAMKEYS: ${WEBHOOK_ENABLED_STREAMKEYS}
+      # Discord "stream is live" / "stream ended" notifications
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
       PUBLIC_URL: ${PUBLIC_URL}
-      BROADCAST_BOX_URL: ${BROADCAST_BOX_URL}
-      FRONTEND_ADMIN_TOKEN: ${FRONTEND_ADMIN_TOKEN}
-    restart: always
+      NOTIFY_OFFLINE_GRACE_PERIOD: ${NOTIFY_OFFLINE_GRACE_PERIOD:-60s}
+      NOTIFY_STREAM_KEYS: ${NOTIFY_STREAM_KEYS:-}
+
+      # Clips: saved to /clips/<streamkey>/ (mounted below), or to S3 when CLIP_S3_BUCKET is set
+      CLIP_STORAGE_PATH: /clips
+      CLIP_BUFFER_DURATION: ${CLIP_BUFFER_DURATION:-2m}
+      CLIP_MAX_DURATION: ${CLIP_MAX_DURATION:-}
+      CLIP_S3_ENDPOINT: ${CLIP_S3_ENDPOINT:-}
+      CLIP_S3_BUCKET: ${CLIP_S3_BUCKET:-}
+      CLIP_S3_ACCESS_KEY: ${CLIP_S3_ACCESS_KEY:-}
+      CLIP_S3_SECRET_KEY: ${CLIP_S3_SECRET_KEY:-}
+      CLIP_S3_REGION: ${CLIP_S3_REGION:-}
+      CLIP_S3_PREFIX: ${CLIP_S3_PREFIX:-}
+
+      # Chat emotes from 7TV, BetterTTV and FrankerFaceZ, plus Twitch's own
+      # emotes when a Twitch app (dev.twitch.tv/console) is configured
+      CHAT_EMOTE_PROVIDERS: ${CHAT_EMOTE_PROVIDERS:-7tv,bttv,ffz}
+      CHAT_EMOTES_TWITCH_IDS: ${CHAT_EMOTES_TWITCH_IDS:-}
+      TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID:-}
+      TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET:-}
+      # Hosts whose GIF links are shown as images in chat, comma separated.
+      # "*.example.com" allows a domain and all its subdomains.
+      CHAT_GIF_HOSTS: ${CHAT_GIF_HOSTS:-}
+      # GIF search in the picker from your own Slink servers, comma separated,
+      # e.g. gifs.kreative-kompas.com,other.example.com (searched while typing,
+      # no API key needed; their hosts are allowed automatically)
+      SLINK_INSTANCES: ${SLINK_INSTANCES:-}
+      # GIPHY search (free key from developers.giphy.com), only runs when a
+      # viewer presses Enter; the hourly cap stays under Giphy's free 100/hour
+      GIPHY_API_KEY: ${GIPHY_API_KEY:-}
+      GIPHY_HOURLY_LIMIT: ${GIPHY_HOURLY_LIMIT:-90}
+      # KLIPY search (free key from partner.klipy.com), also only on Enter
+      KLIPY_API_KEY: ${KLIPY_API_KEY:-}
+      KLIPY_HOURLY_LIMIT: ${KLIPY_HOURLY_LIMIT:-100}
+      GIF_CONTENT_RATING: ${GIF_CONTENT_RATING:-pg-13}
+
+      # Optional cap on viewers per stream, protects your upload bandwidth
+      MAX_VIEWERS_PER_STREAM: ${MAX_VIEWERS_PER_STREAM:-}
+
+      # Social Stream Ninja chat forwarding
+      SSN_SESSION_ID: ${SSN_SESSION_ID:-}
+      SSN_STREAM_KEYS: ${SSN_STREAM_KEYS:-}
+      SSN_VERBOSE: ${SSN_VERBOSE:-false}
+    volumes:
+      # Stream profiles (stream key + bearer token) survive container rebuilds
+      - ./profiles:/app/profiles
+      # Clips, change the left side to the folder on your server
+      - ${CLIP_DIRECTORY:-./clips}:/clips
+    ports:
+      - "8181:8181/udp"
     networks:
       - outside
 

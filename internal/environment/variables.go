@@ -29,6 +29,44 @@ const (
 	ChatMaxHistory      = "CHAT_MAX_HISTORY"
 	ChatDefaultTTL      = "CHAT_DEFAULT_TTL"
 	ChatCleanupInterval = "CHAT_CLEANUP_INTERVAL"
+	ChatEmoteProviders  = "CHAT_EMOTE_PROVIDERS"
+	ChatEmotesTwitchIDs = "CHAT_EMOTES_TWITCH_IDS"
+	ChatGIFHosts        = "CHAT_GIF_HOSTS"
+	GiphyAPIKey         = "GIPHY_API_KEY"
+	GiphyHourlyLimit    = "GIPHY_HOURLY_LIMIT"
+	KlipyAPIKey         = "KLIPY_API_KEY"
+	KlipyHourlyLimit    = "KLIPY_HOURLY_LIMIT"
+	SlinkInstances      = "SLINK_INSTANCES"
+	TenorAPIKey         = "TENOR_API_KEY" // no longer supported, only warned about
+	GIFContentRating    = "GIF_CONTENT_RATING"
+	TwitchClientID      = "TWITCH_CLIENT_ID"
+	TwitchClientSecret  = "TWITCH_CLIENT_SECRET"
+
+	// NOTIFICATIONS
+	DiscordWebhookURL        = "DISCORD_WEBHOOK_URL"
+	PublicURL                = "PUBLIC_URL"
+	NotifyOfflineGracePeriod = "NOTIFY_OFFLINE_GRACE_PERIOD"
+	NotifyStreamKeys         = "NOTIFY_STREAM_KEYS"
+
+	// CLIPS
+	ClipStoragePath    = "CLIP_STORAGE_PATH"
+	ClipS3Endpoint     = "CLIP_S3_ENDPOINT"
+	ClipS3Bucket       = "CLIP_S3_BUCKET"
+	ClipS3AccessKey    = "CLIP_S3_ACCESS_KEY"
+	ClipS3SecretKey    = "CLIP_S3_SECRET_KEY"
+	ClipS3Region       = "CLIP_S3_REGION"
+	ClipS3Prefix       = "CLIP_S3_PREFIX"
+	ClipS3UseSSL       = "CLIP_S3_USE_SSL"
+	ClipBufferDuration = "CLIP_BUFFER_DURATION"
+	ClipMaxDuration    = "CLIP_MAX_DURATION"
+	ClipDraftPath      = "CLIP_DRAFT_PATH"
+	ClipMaxDrafts      = "CLIP_MAX_DRAFTS"
+
+	// SOCIAL STREAM NINJA
+	SSNSessionID        = "SSN_SESSION_ID"
+	SSNStreamKeys       = "SSN_STREAM_KEYS"
+	SSNStreamKeysLegacy = "WATCH_STREAM_KEY"
+	SSNVerbose          = "SSN_VERBOSE"
 
 	// WEBRTC
 	IncludeLoopbackCandidate = "INCLUDE_LOOPBACK_CANDIDATE"
@@ -39,6 +77,8 @@ const (
 	UDPMuxPort               = "UDP_MUX_PORT"
 	UDPMuxPortWHIP           = "UDP_MUX_PORT_WHIP"
 	UDPMuxPortWHEP           = "UDP_MUX_PORT_WHEP"
+	UDPMuxReadBufferSize     = "UDP_MUX_READ_BUFFER_SIZE"
+	MaxViewersPerStream      = "MAX_VIEWERS_PER_STREAM"
 	NAT1To1IP                = "NAT_1_TO_1_IP"
 	NATICECandidateType      = "NAT_ICE_CANDIDATE_TYPE"
 

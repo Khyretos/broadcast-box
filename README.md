@@ -25,6 +25,10 @@
 - [Environment Variables](#environment-variables)
 - [CLI Flags](#cli-flags)
 - [Stream Profile Policy](#stream-profile-policy)
+- [Stream Notifications](#stream-notifications)
+- [Clips](#clips)
+- [Chat Emotes and Reactions](#chat-emotes-and-reactions)
+- [Social Stream Ninja](#social-stream-ninja)
 - [Webhooks](#webhooks)
 - [Network Test on Start](#network-test-on-start)
 - [Design](#design)
@@ -308,6 +312,8 @@ The frontend can be configured by passing these URL Parameters.
 | `NETWORK_TYPES`                      | List of network types to use delineated by `\|` (e.g.,`udp4 \|udp6`).     |
 | `INCLUDE_LOOPBACK_CANDIDATE`         | Enables WebRTC traffic on loopback interface.                             |
 | `UDP_MUX_PORT`                       | Port to multiplex all UDP traffic. Uses random port by default.           |
+| `MAX_VIEWERS_PER_STREAM` | Maximum viewers per stream, further viewers get `503`. Unlimited when unset. |
+| `UDP_MUX_READ_BUFFER_SIZE` | Socket receive buffer size in bytes for the UDP mux. Default is `8388608` (8 MiB), capped by the kernel at `net.core.rmem_max`. |
 | `UDP_MUX_PORT_WHEP`                  | Port to multiplex WHEP traffic only.                                      |
 | `UDP_MUX_PORT_WHIP`                  | Port to multiplex WHIP traffic only.                                      |
 | `TCP_MUX_ADDRESS`                    | Address to serve WebRTC traffic over TCP.                                 |
@@ -386,6 +392,116 @@ The `STREAM_PROFILE_POLICY` environment variable controls who is allowed to init
 | `RESERVED`             | Only users with a valid token **and** a reserved stream key are allowed to stream. This is the most restrictive mode. |
 
 Any other value currently falls back to `ANYONE_WITH_RESERVED` behavior.
+
+## Stream Notifications
+
+Broadcast Box can post a message to Discord (or any webhook that accepts a JSON `content`/`text`/`message` field, such as
+Slack or Mattermost) when a stream goes live, and update it when the stream ends.
+
+| Variable                      | Description                                                                                                                              |
+|-------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `DISCORD_WEBHOOK_URL`         | Webhook to post notifications to. Notifications are disabled when unset.                                                               |
+| `PUBLIC_URL`                  | Public URL of the frontend, used to link to `<PUBLIC_URL>/<streamKey>`. When unset only the stream key is posted.                       |
+| `NOTIFY_OFFLINE_GRACE_PERIOD` | How long a stream may be disconnected before it is announced as ended, so encoder reconnects don't spam the channel. Default is `60s`. |
+| `NOTIFY_STREAM_KEYS`          | Optional comma separated list of stream keys to notify for. All streams are announced when unset.                                     |
+
+For Discord the original "live" message is edited to show the stream has ended, including its duration.
+
+## Clips
+
+The quality selector shows each simulcast layer with its detected resolution, frame rate and bitrate, e.g.
+`0 - 1080p @ 120fps, 12 Mb/s`.
+
+Viewers can clip the last minutes of a live stream. The scissors button in the player opens an editor with the recent
+part of the stream, where they pick a start and end and give the clip a title (the date and time when left empty).
+Published clips appear in the clips panel, opened with the film button next to the chat button.
+
+Each live stream keeps a rolling buffer of its best video layer and audio in memory, about 90 MB per minute at 12 Mbps.
+Clips start at the keyframe at or before the chosen start, so they always play, and are stored as
+`<streamKey>/<id>.mkv` with a `<id>.json` file holding the title and details. Deleting a clip requires the admin token or
+the token of the stream's profile. Clips are supported for H264, AV1, VP8 and VP9 video with Opus audio.
+
+Clip previews play in Chromium based browsers (Chrome, Edge, Brave, Opera). Firefox and Safari have limited Matroska
+support, viewers there can still create and download clips.
+
+| Variable               | Description                                                                                   |
+|------------------------|-----------------------------------------------------------------------------------------------|
+| `CLIP_STORAGE_PATH`    | Directory to store clips in. Enables clips.                                                   |
+| `CLIP_S3_BUCKET`       | S3 bucket to store clips in instead, enables clips. Works with any S3 compatible storage.     |
+| `CLIP_S3_ENDPOINT`     | S3 endpoint, e.g. `https://s3.eu-central-1.amazonaws.com`. Default is `s3.amazonaws.com`.      |
+| `CLIP_S3_ACCESS_KEY`   | S3 access key.                                                                                |
+| `CLIP_S3_SECRET_KEY`   | S3 secret key.                                                                                |
+| `CLIP_S3_REGION`       | S3 region.                                                                                    |
+| `CLIP_S3_PREFIX`       | Optional prefix for the object keys.                                                          |
+| `CLIP_BUFFER_DURATION` | How much of the stream can be clipped. Default is `2m`.                                       |
+| `CLIP_MAX_DURATION`    | Maximum clip length. Default is the buffer duration.                                          |
+| `CLIP_MAX_DRAFTS`      | Clip drafts kept at once, each is a temporary file of the whole buffer. Default is `10`.     |
+| `CLIP_DRAFT_PATH`      | Directory for clip drafts. Default is a directory in the system temp directory.              |
+
+## Chat Emotes and Reactions
+
+The chat has an emoji picker with every Unicode emoji, emotes and GIFs. The 50 emojis, emotes and GIFs a viewer uses
+most are remembered in their browser and shown first.
+
+Clicking the reaction button sends the selected reaction, holding it opens a picker to choose any emoji or emote as
+reaction. Reactions are counted by the server and sent to all viewers four times per second, so they scale with the
+number of viewers.
+
+Chat shows emotes from Twitch, 7TV, BetterTTV and FrankerFaceZ. The server fetches the global emotes and the emotes of
+a Twitch channel, caches them for 30 minutes and gives viewers one merged list. The emote picker can also search all of
+7TV, BetterTTV and FrankerFaceZ; emotes used from a search are sent along with the message so every viewer sees them.
+
+Twitch's own emotes (subscriber emotes of the channel and globals like Kappa) need a Twitch application: create one at
+[dev.twitch.tv/console](https://dev.twitch.tv/console) (any OAuth redirect URL, e.g. `http://localhost`) and set its
+client ID and secret.
+
+GIF links are shown as images when they come from a host in `CHAT_GIF_HOSTS`. Picking a GIF sends it right away, and
+the GIF tab keeps the 50 GIFs each viewer uses most.
+
+The GIF tab can search your own [Slink](https://github.com/andrii-kryvoviaz/slink) servers, listed in `SLINK_INSTANCES`
+(`gifs.example.com` or `https://gifs.example.com`, comma separated). It shows their newest images when the search is
+empty and searches them while typing; their hosts are allowed in chat automatically. No API key is needed: the search
+uses Slink's public image list, Slink API keys only allow uploading. Each Slink server needs guest access
+(`USER_ALLOW_UNAUTHENTICATED_ACCESS=true`) and only its public images are found. Slink searches image descriptions and
+uploader names, not file names, so give your GIFs a description.
+
+With a Giphy API key ([developers.giphy.com](https://developers.giphy.com/dashboard/), free keys allow 100 requests per
+hour) viewers can also search Giphy by pressing Enter. Results are cached for an hour, and the server stops asking Giphy
+after `GIPHY_HOURLY_LIMIT` searches in an hour, so the key is never blocked. Giphy's hosts are allowed automatically.
+
+[KLIPY](https://klipy.com) works the same way: set `KLIPY_API_KEY` (free at [partner.klipy.com](https://partner.klipy.com/api-keys))
+and pressing Enter searches Giphy and KLIPY together, each with its own hourly limit (`KLIPY_HOURLY_LIMIT`). KLIPY's
+GIFs come from `static.klipy.com`, which is then allowed in chat automatically.
+
+Links to a GIF's web page (`https://klipy.com/gifs/...`, `https://giphy.com/gifs/...`) can be pasted in the GIF tab too:
+the server looks up the GIF file behind them. KLIPY pages are read from their preview tags, with KLIPY's search as a
+fallback when `KLIPY_API_KEY` is set.
+
+| Variable                 | Description                                                                                                           |
+|--------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| `CHAT_EMOTE_PROVIDERS`   | Comma separated emote providers: `7tv`, `bttv` and/or `ffz`. Twitch is added when its credentials are set.          |
+| `CHAT_EMOTES_TWITCH_IDS` | Numeric Twitch user ID whose channel emotes to show, for all streams (`12345`) or per stream key (`key:12345,...`). |
+| `TWITCH_CLIENT_ID`       | Client ID of a Twitch application, enables Twitch channel and global emotes.                                         |
+| `TWITCH_CLIENT_SECRET`   | Client secret of that Twitch application.                                                                             |
+| `CHAT_GIF_HOSTS`         | Comma separated hosts whose image links are shown in chat. `*.example.com` allows a domain and all its subdomains, `*` any https host. |
+| `SLINK_INSTANCES`        | Comma separated Slink servers to search for GIFs, e.g. `gifs.example.com,other.example.com`.                          |
+| `GIPHY_API_KEY`          | Giphy API key, enables Giphy search when a viewer presses Enter.                                                      |
+| `GIPHY_HOURLY_LIMIT`     | Most Giphy searches the server makes per hour. Default is `90`.                                                        |
+| `KLIPY_API_KEY`          | KLIPY API key, enables KLIPY search when a viewer presses Enter.                                                      |
+| `KLIPY_HOURLY_LIMIT`     | Most KLIPY searches the server makes per hour. Default is `100`.                                                       |
+| `GIF_CONTENT_RATING`     | Highest content rating for Giphy and KLIPY search: `g`, `pg`, `pg-13` or `r`. Default is `pg-13`.                    |
+
+## Social Stream Ninja
+
+Chat messages can be forwarded to [Social Stream Ninja](https://github.com/steveseguin/social_stream), so Broadcast Box
+chat shows up next to your other platforms. Messages are sent as `extContent` through the SSN API server, with the stream
+key as `sourceName`. Messages sent while the connection to SSN is down are queued and delivered on reconnect.
+
+| Variable          | Description                                                                                       |
+|-------------------|---------------------------------------------------------------------------------------------------|
+| `SSN_SESSION_ID`  | Your SSN session ID. Forwarding is disabled when unset.                                           |
+| `SSN_STREAM_KEYS` | Comma separated list of stream keys whose chat is forwarded. All chat is forwarded when unset.    |
+| `SSN_VERBOSE`     | Log every forwarded message.                                                                      |
 
 ## Webhooks
 

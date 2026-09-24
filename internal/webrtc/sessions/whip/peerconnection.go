@@ -2,6 +2,7 @@ package whip
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
@@ -9,6 +10,20 @@ import (
 
 func (w *WHIPSession) SetOnClosed(onClosed func()) {
 	w.onClosed = onClosed
+}
+
+func (w *WHIPSession) SetOnConnected(onConnected func()) {
+	w.onConnected = onConnected
+}
+
+// Marks the session as active, called for every received media packet
+func (w *WHIPSession) MarkActive() {
+	w.lastActivity.Store(time.Now().UnixNano())
+}
+
+// Returns true if media was received (or the session was created) within the timeout
+func (w *WHIPSession) IsActive(timeout time.Duration) bool {
+	return time.Since(time.Unix(0, w.lastActivity.Load())) < timeout
 }
 
 func (w *WHIPSession) notifyClosed() {
@@ -56,7 +71,18 @@ func (w *WHIPSession) RemovePeerConnection() {
 	slog.Info("WHIPSession.RemovePeerConnection.Completed", "id", w.ID)
 }
 
+// Minimum time between keyframe requests to the publisher. Every requested
+// keyframe costs the streamer bitrate, so many viewers joining or switching
+// layers at once must not make the encoder produce a keyframe storm.
+const pliInterval = time.Second
+
 func (w *WHIPSession) SendPLI() {
+	now := time.Now().UnixNano()
+	last := w.lastPLI.Load()
+	if now-last < int64(pliInterval) || !w.lastPLI.CompareAndSwap(last, now) {
+		return
+	}
+
 	w.PeerConnectionLock.RLock()
 	peerConnection := w.PeerConnection
 	w.PeerConnectionLock.RUnlock()

@@ -5,6 +5,7 @@ import (
 	"maps"
 	"time"
 
+	"github.com/glimesh/broadcast-box/internal/clips"
 	"github.com/glimesh/broadcast-box/internal/server/authorization"
 	"github.com/glimesh/broadcast-box/internal/webrtc/sessions/session"
 	"github.com/glimesh/broadcast-box/internal/webrtc/sessions/whep"
@@ -30,6 +31,9 @@ func (m *SessionManager) addSession(profile authorization.PublicProfile) (s *ses
 
 		WHEPSessions: map[string]*whep.WHEPSession{},
 		ChatManager:  m.ChatManager,
+	}
+	if clips.DefaultService != nil && clips.ValidStreamKey(profile.StreamKey) {
+		s.Recorder = clips.NewRecorder(clips.DefaultService.Config().BufferDuration)
 	}
 	s.SetOnClose(func() {
 		slog.Debug("SessionManager.Session.Done")

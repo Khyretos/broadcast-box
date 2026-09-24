@@ -2,7 +2,9 @@ package session
 
 import (
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -66,13 +68,22 @@ func (s *Session) isDataChannelPeerRegistered(peer *dataChannelPeer) bool {
 }
 
 type fakeDataChannel struct {
+	lock           sync.Mutex
 	textMessages   []string
 	binaryMessages [][]byte
 	sendTextError  error
 	sendError      error
 }
 
+func (f *fakeDataChannel) texts() []string {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	return append([]string(nil), f.textMessages...)
+}
+
 func (f *fakeDataChannel) Send(data []byte) error {
+	f.lock.Lock()
+	defer f.lock.Unlock()
 	if f.sendError != nil {
 		return f.sendError
 	}
@@ -82,10 +93,56 @@ func (f *fakeDataChannel) Send(data []byte) error {
 }
 
 func (f *fakeDataChannel) SendText(s string) error {
+	f.lock.Lock()
+	defer f.lock.Unlock()
 	if f.sendTextError != nil {
 		return f.sendTextError
 	}
 
 	f.textMessages = append(f.textMessages, s)
 	return nil
+}
+
+func TestReactionsAreAggregated(t *testing.T) {
+	s := &Session{StreamKey: "stream-1"}
+	viewerA := &fakeDataChannel{}
+	viewerB := &fakeDataChannel{}
+	s.addDataChannelPeer("a", viewerA)
+	s.addDataChannelPeer("b", viewerB)
+
+	assert.True(t, s.handleReactionMessage([]byte(`{"type":"reaction","emoji":"🔥"}`)))
+	assert.True(t, s.handleReactionMessage([]byte(`{"type":"reaction","emoji":"🔥"}`)))
+	assert.True(t, s.handleReactionMessage([]byte(`{"type":"reaction"}`)))
+	assert.True(t, s.handleReactionMessage([]byte(`{"type":"reaction","emoji":"<script>"}`)), "text is consumed but not counted")
+	assert.False(t, s.handleReactionMessage([]byte(`{"type":"other"}`)))
+
+	assert.Eventually(t, func() bool {
+		return len(viewerA.texts()) == 1 && len(viewerB.texts()) == 1
+	}, time.Second, 10*time.Millisecond)
+
+	assert.JSONEq(t, `{"type":"reactions","counts":{"🔥":2,"❤️":1}}`, viewerA.texts()[0])
+	assert.Equal(t, viewerA.texts(), viewerB.texts())
+}
+
+func TestReactionEmojiValidation(t *testing.T) {
+	for _, emoji := range []string{"❤️", "🔥", "👍🏽", "🇳🇱", "1️⃣", "👨‍👩‍👧", "🏳️‍🌈", "🫡", "☕"} {
+		assert.True(t, isReactionEmoji(emoji), emoji)
+	}
+	for _, text := range []string{"", "a", "hello", "1", "🔥 fire", "<b>", "🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥"} {
+		assert.False(t, isReactionEmoji(text), text)
+	}
+}
+
+func TestEmoteReactions(t *testing.T) {
+	s := &Session{StreamKey: "stream-1"}
+	viewer := &fakeDataChannel{}
+	s.addDataChannelPeer("a", viewer)
+
+	emote := `{"type":"reaction","emote":{"code":"catJAM","url":"https://cdn.7tv.app/emote/1/1x.webp"}}`
+	assert.True(t, s.handleReactionMessage([]byte(emote)))
+	assert.True(t, s.handleReactionMessage([]byte(emote)))
+	assert.True(t, s.handleReactionMessage([]byte(`{"type":"reaction","emote":{"code":"evil","url":"https://evil.example.com/x.gif"}}`)))
+
+	assert.Eventually(t, func() bool { return len(viewer.texts()) == 1 }, time.Second, 10*time.Millisecond)
+	assert.JSONEq(t, `{"type":"reactions","counts":{},"emotes":[{"code":"catJAM","url":"https://cdn.7tv.app/emote/1/1x.webp","count":2}]}`, viewer.texts()[0])
 }

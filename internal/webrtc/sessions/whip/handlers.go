@@ -18,12 +18,17 @@ func (w *WHIPSession) registerWHIPHandlers(peerConnection *webrtc.PeerConnection
 
 	// PeerConnection OnConnectionStateChange
 	w.PeerConnection.OnConnectionStateChange(w.onConnectionStateChange())
+
+	// Log the network path used by the publisher, helps diagnosing NAT/Docker issues
+	peerConnection.SCTP().Transport().ICETransport().OnSelectedCandidatePairChange(func(pair *webrtc.ICECandidatePair) {
+		slog.Info("WHIPSession.SelectedCandidatePair", "id", w.ID, "pair", pair.String())
+	})
 }
 
 func (w *WHIPSession) onICEConnectionStateChangeHandler() func(webrtc.ICEConnectionState) {
 	return func(state webrtc.ICEConnectionState) {
+		slog.Info("WHIPSession.PeerConnection.OnICEConnectionStateChange", "id", w.ID, "state", state)
 		if state == webrtc.ICEConnectionStateFailed || state == webrtc.ICEConnectionStateClosed {
-			slog.Info("WHIPSession.PeerConnection.OnICEConnectionStateChange", "id", w.ID)
 			w.notifyClosed()
 		}
 	}
@@ -58,6 +63,9 @@ func (w *WHIPSession) onConnectionStateChange() func(webrtc.PeerConnectionState)
 
 		case webrtc.PeerConnectionStateConnected:
 			slog.Info("WHIPSession.PeerConnection.OnConnectionStateChange: Host connected", "id", w.ID)
+			if w.onConnected != nil {
+				w.onConnected()
+			}
 
 		}
 	}

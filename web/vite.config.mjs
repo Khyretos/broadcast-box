@@ -83,9 +83,15 @@ export default defineConfig({
 	},
 	build: {
 		outDir: "build",
+		// The lazy loaded emoji data is the only large chunk
+		chunkSizeWarningLimit: 600,
 		rollupOptions: {
 			output: {
 				manualChunks(id) {
+					// Loaded on demand when the emoji picker opens
+					if (id.includes('emojibase-data')) {
+						return "emoji-data"
+					}
 					if (id.includes('node_modules')) {
 						return "node"
 					}

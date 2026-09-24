@@ -1,8 +1,12 @@
 package webrtc
 
 import (
+	"errors"
 	"log/slog"
+	"os"
+	"strconv"
 
+	"github.com/glimesh/broadcast-box/internal/environment"
 	"github.com/glimesh/broadcast-box/internal/server/authorization"
 	"github.com/glimesh/broadcast-box/internal/webrtc/codecs"
 	"github.com/glimesh/broadcast-box/internal/webrtc/peerconnection"
@@ -11,6 +15,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 )
+
+// Returned when a stream has reached MAX_VIEWERS_PER_STREAM
+var ErrStreamFull = errors.New("stream has reached its maximum number of viewers")
 
 func WHEP(offer string, streamKey string) (string, string, error) {
 	utils.DebugOutputOffer(offer)
@@ -22,6 +29,10 @@ func WHEP(offer string, streamKey string) (string, string, error) {
 	session, err := manager.SessionsManager.GetOrAddSession(profile, false)
 	if err != nil {
 		return "", "", err
+	}
+
+	if maxViewers := getMaxViewersPerStream(); maxViewers > 0 && session.GetStreamStatus().ViewerCount >= maxViewers {
+		return "", "", ErrStreamFull
 	}
 
 	whepSessionID := uuid.New().String()
@@ -79,4 +90,12 @@ func WHEP(offer string, streamKey string) (string, string, error) {
 	return utils.DebugOutputAnswer(utils.AppendCandidateToAnswer(peerConnection.LocalDescription().SDP)),
 		whepSessionID,
 		nil
+}
+
+func getMaxViewersPerStream() int {
+	maxViewers, err := strconv.Atoi(os.Getenv(environment.MaxViewersPerStream))
+	if err != nil {
+		return 0
+	}
+	return maxViewers
 }

@@ -33,6 +33,16 @@ func GetServeMuxHandler() http.HandlerFunc {
 	// WHEP session endpoints
 	serverMux.HandleFunc("/api/layer/", corsHandler(layerChangeHandler))
 
+	// Third party chat emotes
+	serverMux.HandleFunc("/api/chat/emotes", corsHandler(emotesHandler))
+	serverMux.HandleFunc("/api/chat/emotes/search", corsHandler(emoteSearchHandler))
+	serverMux.HandleFunc("/api/chat/gifs/search", corsHandler(gifSearchHandler))
+	serverMux.HandleFunc("/api/chat/gifs/resolve", corsHandler(gifResolveHandler))
+
+	// Clips
+	serverMux.HandleFunc("/api/clips", corsHandler(clipsHandler))
+	serverMux.HandleFunc("/api/clips/", corsHandler(clipsHandler))
+
 	// Logging and status endpoints
 	serverMux.HandleFunc("/api/log", corsHandler(logHandler))
 	serverMux.HandleFunc("/api/status", corsHandler(statusHandler))
