@@ -455,9 +455,19 @@ Twitch's own emotes (subscriber emotes of the channel and globals like Kappa) ne
 [dev.twitch.tv/console](https://dev.twitch.tv/console) (any OAuth redirect URL, e.g. `http://localhost`) and set its
 client ID and secret.
 
-GIF links are shown as images when they come from a host in `CHAT_GIF_HOSTS`. With a Giphy API key the GIF tab can
-search GIFs and shows trending ones; Giphy's hosts are then allowed automatically. Picking a GIF sends it right away.
-Get a free Giphy key at [developers.giphy.com](https://developers.giphy.com/dashboard/).
+GIF links are shown as images when they come from a host in `CHAT_GIF_HOSTS`. Picking a GIF sends it right away, and
+the GIF tab keeps the 50 GIFs each viewer uses most.
+
+The GIF tab can search your own [Slink](https://github.com/andrii-kryvoviaz/slink) servers, listed in `SLINK_INSTANCES`
+(`gifs.example.com` or `https://gifs.example.com`, comma separated). It shows their newest images when the search is
+empty and searches them while typing; their hosts are allowed in chat automatically. No API key is needed: the search
+uses Slink's public image list, Slink API keys only allow uploading. Each Slink server needs guest access
+(`USER_ALLOW_UNAUTHENTICATED_ACCESS=true`) and only its public images are found. Slink searches image descriptions and
+uploader names, not file names, so give your GIFs a description.
+
+With a Giphy API key ([developers.giphy.com](https://developers.giphy.com/dashboard/), free keys allow 100 requests per
+hour) viewers can also search Giphy by pressing Enter. Results are cached for an hour, and the server stops asking Giphy
+after `GIPHY_HOURLY_LIMIT` searches in an hour, so the key is never blocked. Giphy's hosts are allowed automatically.
 
 | Variable                 | Description                                                                                                           |
 |--------------------------|-----------------------------------------------------------------------------------------------------------------------|
@@ -466,7 +476,9 @@ Get a free Giphy key at [developers.giphy.com](https://developers.giphy.com/dash
 | `TWITCH_CLIENT_ID`       | Client ID of a Twitch application, enables Twitch channel and global emotes.                                         |
 | `TWITCH_CLIENT_SECRET`   | Client secret of that Twitch application.                                                                             |
 | `CHAT_GIF_HOSTS`         | Comma separated hosts whose image links are shown in chat. `*.example.com` allows a domain and all its subdomains, `*` any https host. |
-| `GIPHY_API_KEY`          | Giphy API key, enables GIF search.                                                                                    |
+| `SLINK_INSTANCES`        | Comma separated Slink servers to search for GIFs, e.g. `gifs.example.com,other.example.com`.                          |
+| `GIPHY_API_KEY`          | Giphy API key, enables Giphy search when a viewer presses Enter.                                                      |
+| `GIPHY_HOURLY_LIMIT`     | Most Giphy searches the server makes per hour. Default is `90`.                                                        |
 | `GIF_CONTENT_RATING`     | Highest content rating for GIF search: `g`, `pg`, `pg-13` or `r`. Default is `pg-13`.                                |
 
 ## Social Stream Ninja

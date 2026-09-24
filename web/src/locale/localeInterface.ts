@@ -228,6 +228,9 @@ export interface localeInterface {
     gifs_trending: string,
     gifs_search_results: string,
     gifs_powered_by: string,
+    gif_press_enter_giphy: string,
+    gifs_latest: string,
+    gif_giphy_limited: string,
     button_reaction_hold_hint: string,
   },
   clips: {

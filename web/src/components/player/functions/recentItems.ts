@@ -1,7 +1,7 @@
 import { Emote } from "../../../hooks/useEmotes";
 
 // The emojis, emotes and GIFs a viewer uses most, kept in their browser.
-// Capped so it never grows without bound.
+// At most 50 of each kind, so it never grows without bound.
 
 export type RecentItem =
 	| { kind: "emoji"; emoji: string }
@@ -15,7 +15,7 @@ interface StoredItem {
 }
 
 const STORAGE_KEY = "bb-recent-items-v1";
-const MAX_ITEMS = 50;
+const MAX_ITEMS_PER_KIND = 50;
 const CHANGED_EVENT = "bb-recent-items-changed";
 
 const itemKey = (item: RecentItem) => {
@@ -50,16 +50,17 @@ export const recordUse = (item: RecentItem) => {
 		existing.lastUsed = Date.now();
 		existing.item = item;
 	} else {
-		// A new item must be able to replace the least used one
-		sortItems(items);
-		if (items.length >= MAX_ITEMS) {
-			items.length = MAX_ITEMS - 1;
+		// A new item replaces the least used one of its kind when full
+		const sameKind = sortItems(items.filter((entry) => entry.item.kind === item.kind));
+		if (sameKind.length >= MAX_ITEMS_PER_KIND) {
+			const removed = new Set(sameKind.slice(MAX_ITEMS_PER_KIND - 1));
+			items.splice(0, items.length, ...items.filter((entry) => !removed.has(entry)));
 		}
 		items.push({ item, count: 1, lastUsed: Date.now() });
 	}
 
 	try {
-		localStorage.setItem(STORAGE_KEY, JSON.stringify(sortItems(items).slice(0, MAX_ITEMS)));
+		localStorage.setItem(STORAGE_KEY, JSON.stringify(sortItems(items)));
 		window.dispatchEvent(new Event(CHANGED_EVENT));
 	} catch {
 		// Storage full or disabled, recent items are only a convenience

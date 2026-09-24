@@ -4,7 +4,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -32,45 +34,118 @@ func TestIsAllowedURL(t *testing.T) {
 	require.False(t, IsAllowedURL("javascript:alert(1)", hosts))
 }
 
-func TestSearch(t *testing.T) {
+func TestParseSlinkInstances(t *testing.T) {
+	instances := ParseSlinkInstances(" gifs.kreative-kompas.com , https://other.example.com/ ,random.example.com:sk_secret, http://insecure.example.com")
+	require.Equal(t, []slinkInstance{
+		{baseURL: "https://gifs.kreative-kompas.com", host: "gifs.kreative-kompas.com"},
+		{baseURL: "https://other.example.com", host: "other.example.com"},
+		{baseURL: "https://random.example.com", host: "random.example.com"},
+	}, instances)
+}
+
+// Response of Slink's GET /api/images, trimmed to the fields that matter
+const slinkResponse = `{"meta":{"size":30,"total":3},"data":[
+	{"id":"6131d2b6","owner":{"id":"u1","displayName":"Khyretos"},"url":"/api/image/public/6131d2b6.gif",
+	 "attributes":{"fileName":"6131d2b6.gif","description":"cat dance","isPublic":true,"createdAt":"2026-09-01T10:00:00+00:00","views":4},
+	 "metadata":{"size":12345,"mimeType":"image/gif","width":320,"height":240},"bookmarkCount":0},
+	{"id":"a1","url":"/api/image/public/a1.png",
+	 "attributes":{"fileName":"meme.png","description":"","isPublic":true},
+	 "metadata":{"size":1,"mimeType":"image/png","width":10,"height":10}},
+	{"id":"v1","url":"/api/image/public/v1.mp4",
+	 "attributes":{"fileName":"clip.mp4","description":"video","isPublic":true},
+	 "metadata":{"size":1,"mimeType":"video/mp4","width":10,"height":10}}
+]}`
+
+func newTestService(t *testing.T, giphyKey string, giphyPerHour int) (*Service, map[string]int, *[]string) {
 	requests := map[string]int{}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var queries []string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests[r.URL.Path]++
 		switch r.URL.Path {
+		case "/api/images":
+			require.Equal(t, "30", r.URL.Query().Get("limit"))
+			require.Empty(t, r.Header.Get("Authorization"), "public listing needs no key")
+			queries = append(queries, r.URL.Query().Get("searchTerm"))
+			_, _ = w.Write([]byte(slinkResponse))
 		case "/v1/gifs/search":
 			require.Equal(t, "giphy-key", r.URL.Query().Get("api_key"))
-			require.Equal(t, "cat", r.URL.Query().Get("q"))
 			require.Equal(t, "pg-13", r.URL.Query().Get("rating"))
 			_, _ = w.Write([]byte(`{"data":[
-				{"title":"Cat Dance","images":{
-					"fixed_height":{"url":"https://media3.giphy.com/media/abc/200.gif?cid=track&rid=200.gif","width":"356","height":"200"},
-					"fixed_height_small":{"url":"https://media3.giphy.com/media/abc/100.gif?cid=track"},
-					"original":{"url":"https://media3.giphy.com/media/abc/giphy.gif"}}},
-				{"title":"Evil","images":{"fixed_height":{"url":"https://evil.example.com/x.gif"},"fixed_height_small":{"url":"https://evil.example.com/y.gif"}}}
+				{"title":"Cat Dance GIF","images":{
+					"fixed_height":{"url":"https://media3.giphy.com/media/abc/200.gif?cid=track","width":"356","height":"200"},
+					"fixed_height_small":{"url":"https://media3.giphy.com/media/abc/100.gif?cid=track"}}},
+				{"title":"Evil","images":{"fixed_height":{"url":"https://evil.example.com/x.gif"}}}
 			]}`))
-		case "/v1/gifs/trending":
-			_, _ = w.Write([]byte(`{"data":[]}`))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
-	defer server.Close()
+	t.Cleanup(server.Close)
 
-	service := New("giphy-key", "")
-	for provider := range service.baseURLs {
-		service.baseURLs[provider] = server.URL
-	}
+	host := strings.TrimPrefix(server.URL, "https://")
+	service := New(giphyKey, giphyPerHour, "", []slinkInstance{{baseURL: server.URL, host: strings.Split(host, ":")[0]}})
+	service.client = server.Client()
+	service.giphyBaseURL = server.URL
+	return service, requests, &queries
+}
 
-	results := service.Search(context.Background(), "cat")
+func TestSlinkSearch(t *testing.T) {
+	service, requests, queries := newTestService(t, "", 0)
+	result := service.Search(context.Background(), "cat", false)
+
+	base := service.slink[0].baseURL
 	require.Equal(t, []GIF{
-		{URL: "https://media3.giphy.com/media/abc/200.gif", Preview: "https://media3.giphy.com/media/abc/100.gif", Width: 356, Height: 200, Title: "Cat Dance", Provider: ProviderGiphy},
-	}, results)
+		{URL: base + "/api/image/public/6131d2b6.gif", Preview: base + "/api/image/public/6131d2b6.gif", Width: 320, Height: 240, Title: "cat dance", Provider: ProviderSlink, Source: service.slink[0].host},
+		{URL: base + "/api/image/public/a1.png", Preview: base + "/api/image/public/a1.png", Width: 10, Height: 10, Title: "meme", Provider: ProviderSlink, Source: service.slink[0].host},
+	}, result.GIFs, "videos are skipped, file name is the fallback title")
+	require.Equal(t, []string{"cat"}, *queries)
 
-	service.Search(context.Background(), "CAT")
-	require.Equal(t, 1, requests["/v1/gifs/search"], "cached case insensitively")
+	// An empty query lists the newest images
+	service.Search(context.Background(), "", false)
+	require.Equal(t, []string{"cat", ""}, *queries)
 
-	service.Search(context.Background(), "")
-	require.Equal(t, 1, requests["/v1/gifs/trending"], "empty query shows trending")
+	service.Search(context.Background(), "CAT", false)
+	require.Equal(t, 2, requests["/api/images"], "cached")
+}
 
-	require.Equal(t, []string{"*.giphy.com"}, service.Hosts())
+func TestGiphyOnlyWhenRequested(t *testing.T) {
+	service, requests, _ := newTestService(t, "giphy-key", 0)
+
+	service.Search(context.Background(), "cat", false)
+	require.Zero(t, requests["/v1/gifs/search"], "typing only searches Slink")
+
+	result := service.Search(context.Background(), "cat", true)
+	require.Equal(t, 1, requests["/v1/gifs/search"])
+	require.Len(t, result.GIFs, 3)
+	require.Equal(t, GIF{
+		URL: "https://media3.giphy.com/media/abc/200.gif", Preview: "https://media3.giphy.com/media/abc/100.gif",
+		Width: 356, Height: 200, Title: "Cat Dance GIF", Provider: ProviderGiphy, Source: "giphy.com",
+	}, result.GIFs[1], "sources are interleaved")
+
+	service.Search(context.Background(), "Cat", true)
+	require.Equal(t, 1, requests["/v1/gifs/search"], "Giphy results are cached")
+
+	service.Search(context.Background(), "", true)
+	require.Equal(t, 1, requests["/v1/gifs/search"], "Giphy is never searched without a query")
+
+	require.Equal(t, []string{service.slink[0].host, "*.giphy.com"}, service.Hosts())
+}
+
+func TestGiphyHourlyBudget(t *testing.T) {
+	service, requests, _ := newTestService(t, "giphy-key", 2)
+	now := time.Now()
+	service.now = func() time.Time { return now }
+
+	service.Search(context.Background(), "one", true)
+	service.Search(context.Background(), "two", true)
+	result := service.Search(context.Background(), "three", true)
+	require.Equal(t, 2, requests["/v1/gifs/search"])
+	require.True(t, result.GiphyLimited)
+	require.Len(t, result.GIFs, 2, "Slink results are still returned")
+
+	// The budget frees up after an hour
+	now = now.Add(61 * time.Minute)
+	result = service.Search(context.Background(), "three", true)
+	require.Equal(t, 3, requests["/v1/gifs/search"])
+	require.False(t, result.GiphyLimited)
 }

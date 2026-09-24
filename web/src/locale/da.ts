@@ -222,6 +222,9 @@ const locale_da: localeInterface = {
     gifs_trending: "Populære",
     gifs_search_results: "Resultater",
     gifs_powered_by: "Leveret af GIPHY",
+    gif_press_enter_giphy: "Tryk Enter for også at søge på GIPHY",
+    gifs_latest: "Nyeste fra {source}",
+    gif_giphy_limited: "GIPHY-søgning er sat på pause et stykke tid, for mange søgninger i denne time.",
     button_reaction_hold_hint: "Klik for at reagere, hold for at vælge en reaktion",
   },
   clips: {

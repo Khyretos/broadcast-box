@@ -40,9 +40,14 @@ services:
       # Hosts whose GIF links are shown as images in chat, comma separated.
       # "*.example.com" allows a domain and all its subdomains.
       CHAT_GIF_HOSTS: ${CHAT_GIF_HOSTS:-}
-      # GIF search in the picker (free key from developers.giphy.com),
-      # Giphy's hosts are then allowed automatically
+      # GIF search in the picker from your own Slink servers, comma separated,
+      # e.g. gifs.kreative-kompas.com,other.example.com (searched while typing,
+      # no API key needed; their hosts are allowed automatically)
+      SLINK_INSTANCES: ${SLINK_INSTANCES:-}
+      # GIPHY search (free key from developers.giphy.com), only runs when a
+      # viewer presses Enter; the hourly cap stays under Giphy's free 100/hour
       GIPHY_API_KEY: ${GIPHY_API_KEY:-}
+      GIPHY_HOURLY_LIMIT: ${GIPHY_HOURLY_LIMIT:-90}
       GIF_CONTENT_RATING: ${GIF_CONTENT_RATING:-pg-13}
 
       # Optional cap on viewers per stream, protects your upload bandwidth

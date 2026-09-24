@@ -26,18 +26,27 @@ func emotesHandler(responseWriter http.ResponseWriter, request *http.Request) {
 	}
 
 	responseWriter.Header().Set("Cache-Control", "public, max-age=300")
+	gifSources := map[string]any{"giphy": false, "slink": []string{}}
+	if gifs.DefaultService != nil {
+		gifSources["giphy"] = gifs.DefaultService.GiphyEnabled()
+		if hosts := gifs.DefaultService.SlinkHosts(); hosts != nil {
+			gifSources["slink"] = hosts
+		}
+	}
+
 	writeJSON(responseWriter, map[string]any{
-		"emotes":    list,
-		"gifHosts":  gifHosts(),
-		"gifSearch": gifs.DefaultService != nil,
+		"emotes":     list,
+		"gifHosts":   gifHosts(),
+		"gifSources": gifSources,
 	})
 }
 
-// GET /api/chat/gifs/search?q=<query> searches Giphy, trending
-// GIFs when the query is empty
+// GET /api/chat/gifs/search?q=<query>[&giphy] searches the Slink instances,
+// and Giphy only with the giphy parameter (the viewer pressed enter). An
+// empty query lists the newest Slink images.
 func gifSearchHandler(responseWriter http.ResponseWriter, request *http.Request) {
 	if gifs.DefaultService == nil {
-		writeJSON(responseWriter, map[string]any{"gifs": []gifs.GIF{}})
+		writeJSON(responseWriter, gifs.SearchResult{GIFs: []gifs.GIF{}})
 		return
 	}
 	if !gifSearchLimiters.allow(clientAddress(request)) {
@@ -45,12 +54,13 @@ func gifSearchHandler(responseWriter http.ResponseWriter, request *http.Request)
 		return
 	}
 
-	list := gifs.DefaultService.Search(request.Context(), request.URL.Query().Get("q"))
-	if list == nil {
-		list = []gifs.GIF{}
+	_, includeGiphy := request.URL.Query()["giphy"]
+	result := gifs.DefaultService.Search(request.Context(), request.URL.Query().Get("q"), includeGiphy)
+	if result.GIFs == nil {
+		result.GIFs = []gifs.GIF{}
 	}
-	responseWriter.Header().Set("Cache-Control", "public, max-age=600")
-	writeJSON(responseWriter, map[string]any{"gifs": list})
+	responseWriter.Header().Set("Cache-Control", "public, max-age=60")
+	writeJSON(responseWriter, result)
 }
 
 // GET /api/chat/emotes/search?q=<query> searches 7TV, BetterTTV and FrankerFaceZ

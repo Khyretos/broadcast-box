@@ -10,11 +10,19 @@ export interface Emote {
 
 export type EmoteMap = Map<string, Emote>;
 
+export interface GifSources {
+	giphy: boolean;
+	// Hosts of the configured Slink instances
+	slink: string[];
+}
+
 interface EmotesResponse {
 	emotes: Emote[];
 	gifHosts: string[];
-	gifSearch: boolean;
+	gifSources: GifSources;
 }
+
+const noGifSources: GifSources = { giphy: false, slink: [] };
 
 export interface StreamEmotes {
 	streamKey: string;
@@ -23,8 +31,8 @@ export interface StreamEmotes {
 	// Hosts whose images are shown inline in chat, "*.example.com" for a
 	// domain and its subdomains, "*" for any
 	gifHosts: string[];
-	// Giphy search is configured on the server
-	gifSearch: boolean;
+	// GIF search configured on the server
+	gifSources: GifSources;
 }
 
 const cache = new Map<string, Promise<EmotesResponse>>();
@@ -34,14 +42,14 @@ const loadEmotes = (streamKey: string) => {
 	if (!request) {
 		request = fetch(`/api/chat/emotes?key=${encodeURIComponent(streamKey)}`)
 			.then((response): Promise<Partial<EmotesResponse>> | Partial<EmotesResponse> => response.ok ? response.json() : {})
-			.then((body) => ({ emotes: body.emotes ?? [], gifHosts: body.gifHosts ?? [], gifSearch: body.gifSearch ?? false }))
-			.catch(() => ({ emotes: [], gifHosts: [], gifSearch: false }));
+			.then((body) => ({ emotes: body.emotes ?? [], gifHosts: body.gifHosts ?? [], gifSources: body.gifSources ?? noGifSources }))
+			.catch(() => ({ emotes: [], gifHosts: [], gifSources: noGifSources }));
 		cache.set(streamKey, request);
 	}
 	return request;
 };
 
-const emptyEmotes = (streamKey: string): StreamEmotes => ({ streamKey, list: [], map: new Map(), gifHosts: [], gifSearch: false });
+const emptyEmotes = (streamKey: string): StreamEmotes => ({ streamKey, list: [], map: new Map(), gifHosts: [], gifSources: noGifSources });
 
 // Emotes configured for the stream (Twitch, 7TV, BetterTTV, FrankerFaceZ)
 export const useEmotes = (streamKey: string): StreamEmotes => {
@@ -56,7 +64,7 @@ export const useEmotes = (streamKey: string): StreamEmotes => {
 					list: body.emotes,
 					map: new Map(body.emotes.map((emote) => [emote.code, emote])),
 					gifHosts: body.gifHosts,
-					gifSearch: body.gifSearch,
+					gifSources: body.gifSources,
 				});
 			}
 		});
@@ -124,22 +132,31 @@ export interface GifResult {
 	width?: number;
 	height?: number;
 	title?: string;
-	provider: "giphy";
+	provider: "giphy" | "slink";
+	// Host the GIF comes from
+	source: string;
 }
 
-const gifSearchCache = new Map<string, Promise<GifResult[]>>();
+export interface GifSearchResult {
+	gifs: GifResult[];
+	// Giphy was skipped because the server's hourly Giphy budget is used up
+	giphyLimited?: boolean;
+}
 
-// Searches Giphy through the server, trending GIFs for an empty query
-export const searchGifs = (query: string): Promise<GifResult[]> => {
-	const key = query.trim().toLowerCase();
+const gifSearchCache = new Map<string, Promise<GifSearchResult>>();
+
+// Searches the Slink instances, and Giphy when includeGiphy is set. Giphy
+// allows few requests per hour, so it is only searched on enter.
+export const searchGifs = (query: string, includeGiphy: boolean): Promise<GifSearchResult> => {
+	const key = `${includeGiphy ? "giphy" : "slink"}:${query.trim().toLowerCase()}`;
 	let request = gifSearchCache.get(key);
 	if (!request) {
-		request = fetch(`/api/chat/gifs/search?q=${encodeURIComponent(key)}`)
-			.then((response): Promise<{ gifs?: GifResult[] }> | { gifs?: GifResult[] } => response.ok ? response.json() : {})
-			.then((body) => body.gifs ?? [])
-			.catch(() => []);
+		request = fetch(`/api/chat/gifs/search?q=${encodeURIComponent(query.trim())}${includeGiphy ? "&giphy" : ""}`)
+			.then((response): Promise<Partial<GifSearchResult>> | Partial<GifSearchResult> => response.ok ? response.json() : {})
+			.then((body) => ({ gifs: body.gifs ?? [], giphyLimited: body.giphyLimited }))
+			.catch(() => ({ gifs: [] }));
 		gifSearchCache.set(key, request);
-		setTimeout(() => gifSearchCache.delete(key), 5 * 60_000);
+		setTimeout(() => gifSearchCache.delete(key), 60_000);
 	}
 	return request;
 };
