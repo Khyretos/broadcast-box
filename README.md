@@ -26,6 +26,8 @@
 - [CLI Flags](#cli-flags)
 - [Stream Profile Policy](#stream-profile-policy)
 - [Stream Notifications](#stream-notifications)
+- [Clips](#clips)
+- [Chat Emotes and Reactions](#chat-emotes-and-reactions)
 - [Social Stream Ninja](#social-stream-ninja)
 - [Webhooks](#webhooks)
 - [Network Test on Start](#network-test-on-start)
@@ -310,6 +312,7 @@ The frontend can be configured by passing these URL Parameters.
 | `NETWORK_TYPES`                      | List of network types to use delineated by `\|` (e.g.,`udp4 \|udp6`).     |
 | `INCLUDE_LOOPBACK_CANDIDATE`         | Enables WebRTC traffic on loopback interface.                             |
 | `UDP_MUX_PORT`                       | Port to multiplex all UDP traffic. Uses random port by default.           |
+| `MAX_VIEWERS_PER_STREAM` | Maximum viewers per stream, further viewers get `503`. Unlimited when unset. |
 | `UDP_MUX_READ_BUFFER_SIZE` | Socket receive buffer size in bytes for the UDP mux. Default is `8388608` (8 MiB), capped by the kernel at `net.core.rmem_max`. |
 | `UDP_MUX_PORT_WHEP`                  | Port to multiplex WHEP traffic only.                                      |
 | `UDP_MUX_PORT_WHIP`                  | Port to multiplex WHIP traffic only.                                      |
@@ -403,6 +406,47 @@ Slack or Mattermost) when a stream goes live, and update it when the stream ends
 | `NOTIFY_STREAM_KEYS`          | Optional comma separated list of stream keys to notify for. All streams are announced when unset.                                     |
 
 For Discord the original "live" message is edited to show the stream has ended, including its duration.
+
+## Clips
+
+Viewers can clip the last minutes of a live stream. The scissors button in the player opens an editor with the recent
+part of the stream, where they pick a start and end and give the clip a title (the date and time when left empty).
+Published clips appear in the clips panel, opened with the film button next to the chat button.
+
+Each live stream keeps a rolling buffer of its best video layer and audio in memory, about 90 MB per minute at 12 Mbps.
+Clips start at the keyframe at or before the chosen start, so they always play, and are stored as
+`<streamKey>/<id>.mkv` with a `<id>.json` file holding the title and details. Deleting a clip requires the admin token or
+the token of the stream's profile. Clips are supported for H264, AV1, VP8 and VP9 video with Opus audio.
+
+Clip previews play in Chromium based browsers (Chrome, Edge, Brave, Opera). Firefox and Safari have limited Matroska
+support, viewers there can still create and download clips.
+
+| Variable               | Description                                                                                   |
+|------------------------|-----------------------------------------------------------------------------------------------|
+| `CLIP_STORAGE_PATH`    | Directory to store clips in. Enables clips.                                                   |
+| `CLIP_S3_BUCKET`       | S3 bucket to store clips in instead, enables clips. Works with any S3 compatible storage.     |
+| `CLIP_S3_ENDPOINT`     | S3 endpoint, e.g. `https://s3.eu-central-1.amazonaws.com`. Default is `s3.amazonaws.com`.      |
+| `CLIP_S3_ACCESS_KEY`   | S3 access key.                                                                                |
+| `CLIP_S3_SECRET_KEY`   | S3 secret key.                                                                                |
+| `CLIP_S3_REGION`       | S3 region.                                                                                    |
+| `CLIP_S3_PREFIX`       | Optional prefix for the object keys.                                                          |
+| `CLIP_BUFFER_DURATION` | How much of the stream can be clipped. Default is `2m`.                                       |
+| `CLIP_MAX_DURATION`    | Maximum clip length. Default is the buffer duration.                                          |
+| `CLIP_MAX_DRAFTS`      | Clip drafts kept at once, each is a temporary file of the whole buffer. Default is `10`.     |
+| `CLIP_DRAFT_PATH`      | Directory for clip drafts. Default is a directory in the system temp directory.              |
+
+## Chat Emotes and Reactions
+
+The chat has an emoji picker, and viewers can react to the stream with one of ten emojis. Reactions are counted by the
+server and sent to all viewers four times per second, so they scale with the number of viewers.
+
+Chat can also show emotes from 7TV, BetterTTV and FrankerFaceZ. The server fetches the global emotes and the emotes of
+a Twitch channel, caches them for 30 minutes and gives viewers one merged list.
+
+| Variable                 | Description                                                                                                           |
+|--------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| `CHAT_EMOTE_PROVIDERS`   | Comma separated emote providers: `7tv`, `bttv` and/or `ffz`. Emotes are disabled when unset.                         |
+| `CHAT_EMOTES_TWITCH_IDS` | Numeric Twitch user ID whose channel emotes to show, for all streams (`12345`) or per stream key (`key:12345,...`). |
 
 ## Social Stream Ninja
 

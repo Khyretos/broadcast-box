@@ -43,3 +43,6 @@ BroadcastBox.exe
 
 # local compose settings, contains secrets
 .env
+
+# clips recorded by docker compose
+/clips
