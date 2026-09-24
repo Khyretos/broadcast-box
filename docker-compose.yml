@@ -1,0 +1,46 @@
+services:
+  broadcast-box:
+    image: broadcast-box-ssn
+    build: ./broadcast-box
+    hostname: broadcast-box
+    container_name: broadcast-box
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      UDP_MUX_PORT: 8181
+      INCLUDE_PUBLIC_IP_IN_NAT_1_TO_1_IP: yes
+      NAT_1_TO_1_IP: ${IP_ADDRESS}
+      NETWORK_TEST_ON_START: false
+      FRONTEND_ADMIN_TOKEN: ${FRONTEND_ADMIN_TOKEN}
+      STREAM_PROFILE_PATH: /app/profiles
+#      STREAM_PROFILE_POLICY: ${STREAM_PROFILE_POLICY}
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      SSN_SESSION_ID: ${SSN_SESSION_ID}
+      SSN_VERBOSE: ${SSN_VERBOSE:-false}
+      WATCH_STREAM_KEY: ${WATCH_STREAM_KEY}
+    ports:
+      - "8181:8181/tcp"
+      - "8181:8181/udp"
+    networks:
+      - outside
+
+  webhookserver:
+    build: ./webhook_server
+    container_name: broadcast-box-webhookserver
+    environment:
+      WEBHOOK_ENABLED_STREAMKEYS: ${WEBHOOK_ENABLED_STREAMKEYS}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
+      PUBLIC_URL: ${PUBLIC_URL}
+      BROADCAST_BOX_URL: ${BROADCAST_BOX_URL}
+      FRONTEND_ADMIN_TOKEN: ${FRONTEND_ADMIN_TOKEN}
+    restart: always
+    networks:
+      - outside
+
+networks:
+  outside:
+    external: true
+    name: nginx-reverse-proxy_default
