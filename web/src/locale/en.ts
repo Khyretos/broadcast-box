@@ -221,7 +221,7 @@ const locale_en: localeInterface = {
     gif_search_placeholder: "Search GIFs",
     gifs_trending: "Trending",
     gifs_search_results: "Results",
-    gifs_powered_by: "Powered by GIPHY / Tenor",
+    gifs_powered_by: "Powered by GIPHY",
     button_reaction_hold_hint: "Click to react, hold to choose a reaction",
   },
   clips: {

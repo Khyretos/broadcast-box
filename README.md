@@ -455,11 +455,9 @@ Twitch's own emotes (subscriber emotes of the channel and globals like Kappa) ne
 [dev.twitch.tv/console](https://dev.twitch.tv/console) (any OAuth redirect URL, e.g. `http://localhost`) and set its
 client ID and secret.
 
-GIF links are shown as images when they come from a host in `CHAT_GIF_HOSTS`. With a Giphy and/or Tenor API key the
-GIF tab can search GIFs and shows trending ones; the hosts of those services are then allowed automatically. Picking a
-GIF sends it right away. Get a free Giphy key at [developers.giphy.com](https://developers.giphy.com/dashboard/), and a
-Tenor key by enabling the Tenor API in a [Google Cloud](https://console.cloud.google.com/apis/library/tenor.googleapis.com)
-project.
+GIF links are shown as images when they come from a host in `CHAT_GIF_HOSTS`. With a Giphy API key the GIF tab can
+search GIFs and shows trending ones; Giphy's hosts are then allowed automatically. Picking a GIF sends it right away.
+Get a free Giphy key at [developers.giphy.com](https://developers.giphy.com/dashboard/).
 
 | Variable                 | Description                                                                                                           |
 |--------------------------|-----------------------------------------------------------------------------------------------------------------------|
@@ -469,7 +467,6 @@ project.
 | `TWITCH_CLIENT_SECRET`   | Client secret of that Twitch application.                                                                             |
 | `CHAT_GIF_HOSTS`         | Comma separated hosts whose image links are shown in chat. `*.example.com` allows a domain and all its subdomains, `*` any https host. |
 | `GIPHY_API_KEY`          | Giphy API key, enables GIF search.                                                                                    |
-| `TENOR_API_KEY`          | Tenor (Google) API key, enables GIF search.                                                                           |
 | `GIF_CONTENT_RATING`     | Highest content rating for GIF search: `g`, `pg`, `pg-13` or `r`. Default is `pg-13`.                                |
 
 ## Social Stream Ninja

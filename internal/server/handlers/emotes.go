@@ -33,7 +33,7 @@ func emotesHandler(responseWriter http.ResponseWriter, request *http.Request) {
 	})
 }
 
-// GET /api/chat/gifs/search?q=<query> searches Giphy and Tenor, trending
+// GET /api/chat/gifs/search?q=<query> searches Giphy, trending
 // GIFs when the query is empty
 func gifSearchHandler(responseWriter http.ResponseWriter, request *http.Request) {
 	if gifs.DefaultService == nil {

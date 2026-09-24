@@ -40,10 +40,9 @@ services:
       # Hosts whose GIF links are shown as images in chat, comma separated.
       # "*.example.com" allows a domain and all its subdomains.
       CHAT_GIF_HOSTS: ${CHAT_GIF_HOSTS:-}
-      # GIF search in the picker (free keys from developers.giphy.com and
-      # Google Cloud for Tenor), their hosts are allowed automatically
+      # GIF search in the picker (free key from developers.giphy.com),
+      # Giphy's hosts are then allowed automatically
       GIPHY_API_KEY: ${GIPHY_API_KEY:-}
-      TENOR_API_KEY: ${TENOR_API_KEY:-}
       GIF_CONTENT_RATING: ${GIF_CONTENT_RATING:-pg-13}
 
       # Optional cap on viewers per stream, protects your upload bandwidth

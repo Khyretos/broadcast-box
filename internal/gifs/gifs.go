@@ -1,4 +1,4 @@
-// Package gifs searches Giphy and Tenor for the chat GIF picker. Requests go
+// Package gifs searches Giphy for the chat GIF picker. Requests go
 // through the server so API keys stay private, and results are cached so
 // many viewers searching the same thing cost one request.
 package gifs
@@ -20,7 +20,6 @@ import (
 
 const (
 	ProviderGiphy = "giphy"
-	ProviderTenor = "tenor"
 
 	resultLimit      = 30
 	cacheDuration    = 10 * time.Minute
@@ -34,7 +33,6 @@ const (
 // Hosts the providers serve GIF files from, allowed in chat automatically
 var providerHosts = map[string][]string{
 	ProviderGiphy: {"*.giphy.com"},
-	ProviderTenor: {"*.tenor.com"},
 }
 
 type GIF struct {
@@ -53,7 +51,6 @@ type cacheEntry struct {
 
 type Service struct {
 	giphyKey string
-	tenorKey string
 	rating   string
 	client   *http.Client
 	baseURLs map[string]string
@@ -62,21 +59,25 @@ type Service struct {
 	cache map[string]cacheEntry
 }
 
-// DefaultService is nil when neither GIPHY_API_KEY nor TENOR_API_KEY is set
+// DefaultService is nil when GIPHY_API_KEY is not set
 var DefaultService *Service
 
 func Setup() {
-	giphyKey, tenorKey := os.Getenv(environment.GiphyAPIKey), os.Getenv(environment.TenorAPIKey)
-	if giphyKey == "" && tenorKey == "" {
+	if os.Getenv(environment.TenorAPIKey) != "" {
+		slog.Warn("GIFs: Tenor's API is no longer available, TENOR_API_KEY is ignored")
+	}
+
+	giphyKey := os.Getenv(environment.GiphyAPIKey)
+	if giphyKey == "" {
 		return
 	}
 
-	DefaultService = New(giphyKey, tenorKey, os.Getenv(environment.GIFContentRating))
+	DefaultService = New(giphyKey, os.Getenv(environment.GIFContentRating))
 	slog.Info("GIFs: search enabled", "providers", DefaultService.Providers(), "rating", DefaultService.rating)
 }
 
 // rating is Giphy's content rating (g, pg, pg-13, r), default pg-13
-func New(giphyKey, tenorKey, rating string) *Service {
+func New(giphyKey, rating string) *Service {
 	rating = strings.ToLower(strings.TrimSpace(rating))
 	switch rating {
 	case "g", "pg", "pg-13", "r":
@@ -86,12 +87,10 @@ func New(giphyKey, tenorKey, rating string) *Service {
 
 	return &Service{
 		giphyKey: giphyKey,
-		tenorKey: tenorKey,
 		rating:   rating,
 		client:   &http.Client{Timeout: requestTimeout},
 		baseURLs: map[string]string{
 			ProviderGiphy: "https://api.giphy.com",
-			ProviderTenor: "https://tenor.googleapis.com",
 		},
 		cache: map[string]cacheEntry{},
 	}
@@ -100,9 +99,6 @@ func New(giphyKey, tenorKey, rating string) *Service {
 func (s *Service) Providers() (providers []string) {
 	if s.giphyKey != "" {
 		providers = append(providers, ProviderGiphy)
-	}
-	if s.tenorKey != "" {
-		providers = append(providers, ProviderTenor)
 	}
 	return providers
 }
@@ -208,8 +204,6 @@ func (s *Service) searchProvider(ctx context.Context, provider, query string) ([
 	switch provider {
 	case ProviderGiphy:
 		return s.searchGiphy(ctx, query)
-	case ProviderTenor:
-		return s.searchTenor(ctx, query)
 	}
 	return nil, nil
 }
@@ -264,56 +258,6 @@ func (s *Service) searchGiphy(ctx context.Context, query string) ([]GIF, error) 
 			Title:    item.Title,
 			Provider: ProviderGiphy,
 		})
-	}
-	return gifs, nil
-}
-
-func (s *Service) searchTenor(ctx context.Context, query string) ([]GIF, error) {
-	contentFilter := map[string]string{"g": "high", "pg": "medium", "pg-13": "low", "r": "off"}[s.rating]
-	params := url.Values{
-		"key":           {s.tenorKey},
-		"client_key":    {"broadcast-box"},
-		"limit":         {fmt.Sprint(resultLimit)},
-		"media_filter":  {"gif,tinygif"},
-		"contentfilter": {contentFilter},
-	}
-	endpoint := "/v2/featured"
-	if query != "" {
-		endpoint = "/v2/search"
-		params.Set("q", query)
-	}
-
-	type tenorMedia struct {
-		URL  string `json:"url"`
-		Dims []int  `json:"dims"`
-	}
-	var response struct {
-		Results []struct {
-			Title              string                `json:"title"`
-			ContentDescription string                `json:"content_description"`
-			MediaFormats       map[string]tenorMedia `json:"media_formats"`
-		} `json:"results"`
-	}
-	if err := s.getJSON(ctx, s.baseURLs[ProviderTenor]+endpoint+"?"+params.Encode(), &response); err != nil {
-		return nil, err
-	}
-
-	var gifs []GIF
-	for _, item := range response.Results {
-		full := item.MediaFormats["gif"]
-		preview := item.MediaFormats["tinygif"]
-		if preview.URL == "" {
-			preview = full
-		}
-		title := item.Title
-		if title == "" {
-			title = item.ContentDescription
-		}
-		gif := GIF{URL: full.URL, Preview: preview.URL, Title: title, Provider: ProviderTenor}
-		if len(full.Dims) == 2 {
-			gif.Width, gif.Height = full.Dims[0], full.Dims[1]
-		}
-		gifs = appendGIF(gifs, gif)
 	}
 	return gifs, nil
 }

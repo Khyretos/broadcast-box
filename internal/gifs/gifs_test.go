@@ -50,22 +50,13 @@ func TestSearch(t *testing.T) {
 			]}`))
 		case "/v1/gifs/trending":
 			_, _ = w.Write([]byte(`{"data":[]}`))
-		case "/v2/search":
-			require.Equal(t, "tenor-key", r.URL.Query().Get("key"))
-			require.Equal(t, "cat", r.URL.Query().Get("q"))
-			require.Equal(t, "low", r.URL.Query().Get("contentfilter"))
-			_, _ = w.Write([]byte(`{"results":[{"title":"","content_description":"Cat Jam","media_formats":{
-				"gif":{"url":"https://media.tenor.com/abc/cat.gif","dims":[498,280]},
-				"tinygif":{"url":"https://media.tenor.com/abc/tiny.gif","dims":[220,124]}}}]}`))
-		case "/v2/featured":
-			_, _ = w.Write([]byte(`{"results":[]}`))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
 
-	service := New("giphy-key", "tenor-key", "")
+	service := New("giphy-key", "")
 	for provider := range service.baseURLs {
 		service.baseURLs[provider] = server.URL
 	}
@@ -73,7 +64,6 @@ func TestSearch(t *testing.T) {
 	results := service.Search(context.Background(), "cat")
 	require.Equal(t, []GIF{
 		{URL: "https://media3.giphy.com/media/abc/200.gif", Preview: "https://media3.giphy.com/media/abc/100.gif", Width: 356, Height: 200, Title: "Cat Dance", Provider: ProviderGiphy},
-		{URL: "https://media.tenor.com/abc/cat.gif", Preview: "https://media.tenor.com/abc/tiny.gif", Width: 498, Height: 280, Title: "Cat Jam", Provider: ProviderTenor},
 	}, results)
 
 	service.Search(context.Background(), "CAT")
@@ -81,7 +71,6 @@ func TestSearch(t *testing.T) {
 
 	service.Search(context.Background(), "")
 	require.Equal(t, 1, requests["/v1/gifs/trending"], "empty query shows trending")
-	require.Equal(t, 1, requests["/v2/featured"])
 
-	require.Equal(t, []string{"*.giphy.com", "*.tenor.com"}, service.Hosts())
+	require.Equal(t, []string{"*.giphy.com"}, service.Hosts())
 }

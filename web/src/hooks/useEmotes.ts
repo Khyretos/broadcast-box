@@ -23,7 +23,7 @@ export interface StreamEmotes {
 	// Hosts whose images are shown inline in chat, "*.example.com" for a
 	// domain and its subdomains, "*" for any
 	gifHosts: string[];
-	// Giphy and/or Tenor search is configured on the server
+	// Giphy search is configured on the server
 	gifSearch: boolean;
 }
 
@@ -124,12 +124,12 @@ export interface GifResult {
 	width?: number;
 	height?: number;
 	title?: string;
-	provider: "giphy" | "tenor";
+	provider: "giphy";
 }
 
 const gifSearchCache = new Map<string, Promise<GifResult[]>>();
 
-// Searches Giphy and Tenor through the server, trending GIFs for an empty query
+// Searches Giphy through the server, trending GIFs for an empty query
 export const searchGifs = (query: string): Promise<GifResult[]> => {
 	const key = query.trim().toLowerCase();
 	let request = gifSearchCache.get(key);

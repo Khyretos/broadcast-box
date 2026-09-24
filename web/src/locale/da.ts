@@ -221,7 +221,7 @@ const locale_da: localeInterface = {
     gif_search_placeholder: "Søg efter GIF'er",
     gifs_trending: "Populære",
     gifs_search_results: "Resultater",
-    gifs_powered_by: "Leveret af GIPHY / Tenor",
+    gifs_powered_by: "Leveret af GIPHY",
     button_reaction_hold_hint: "Klik for at reagere, hold for at vælge en reaktion",
   },
   clips: {

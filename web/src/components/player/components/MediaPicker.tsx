@@ -129,7 +129,7 @@ const MediaPicker = (props: MediaPickerProps) => {
 		};
 	}, [query, tab]);
 
-	// Search Giphy/Tenor while typing in the GIFs tab, trending when empty
+	// Search Giphy while typing in the GIFs tab, trending when empty
 	useEffect(() => {
 		if (tab !== "gifs" || !emotes.gifSearch) {
 			return;
