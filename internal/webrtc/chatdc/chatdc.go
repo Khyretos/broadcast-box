@@ -8,6 +8,7 @@ import (
 
 	"github.com/glimesh/broadcast-box/internal/chat"
 	"github.com/pion/webrtc/v4"
+	"golang.org/x/time/rate"
 )
 
 type Handler struct {
@@ -19,6 +20,12 @@ func NewHandler(cm *chat.Manager) *Handler {
 }
 
 const DataChannelLabel = "bb-chat-v1"
+
+// Chat messages per second (and burst) a single viewer may send
+const (
+	chatRateLimit = rate.Limit(1)
+	chatRateBurst = 5
+)
 
 const (
 	inboundTypeSend = "chat.send"
@@ -60,6 +67,7 @@ func (h *Handler) Bind(streamKey string, peerID string, dataChannel *webrtc.Data
 		closeSubscription func()
 		closeLock         sync.Mutex
 		writeLock         sync.Mutex
+		sendLimiter       = rate.NewLimiter(chatRateLimit, chatRateBurst)
 	)
 	closeSubscription = func() {}
 
@@ -143,6 +151,11 @@ func (h *Handler) Bind(streamKey string, peerID string, dataChannel *webrtc.Data
 
 			if len(displayName) < 1 || len(displayName) > 80 {
 				_ = send(outboundMessage{Type: outboundTypeError, Error: "invalid display name length", ClientMessage: inbound.ClientMessage})
+				return
+			}
+
+			if !sendLimiter.Allow() {
+				_ = send(outboundMessage{Type: outboundTypeError, Error: "you are sending messages too fast", ClientMessage: inbound.ClientMessage})
 				return
 			}
 
