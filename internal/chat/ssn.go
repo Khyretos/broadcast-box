@@ -3,6 +3,7 @@ package chat
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"log/slog"
 	"os"
 	"strings"
@@ -81,19 +82,24 @@ func envBool(key string) bool {
 	return false
 }
 
-func (f *ssnForwarder) forward(streamKey, displayName, text string) {
+func (f *ssnForwarder) forward(streamKey, displayName, text string, emotes map[string]string) {
 	if len(f.streamKeys) != 0 && !f.streamKeys[streamKey] {
 		return
 	}
 
-	// Same shape the SSN Advanced Message Generator produces. textonly stops
-	// viewers from injecting HTML into SSN overlays.
+	// Same shape the SSN Advanced Message Generator produces. Messages are
+	// sent as text so viewers can't inject HTML into SSN overlays, unless they
+	// contain emotes: then the text is escaped and emotes become images.
+	chatMessage, textOnly := text, true
+	if len(emotes) > 0 {
+		chatMessage, textOnly = ssnMessageHTML(text, emotes), false
+	}
 	content, _ := json.Marshal(map[string]any{
 		"chatname":    displayName,
-		"chatmessage": text,
+		"chatmessage": chatMessage,
 		"type":        "api",
 		"sourceName":  streamKey,
-		"textonly":    true,
+		"textonly":    textOnly,
 	})
 	payload, _ := json.Marshal(map[string]any{
 		"action": "extContent",
@@ -108,6 +114,21 @@ func (f *ssnForwarder) forward(streamKey, displayName, text string) {
 	default:
 		slog.Error("SSN: queue full, dropping message", "streamKey", streamKey, "user", displayName)
 	}
+}
+
+func ssnMessageHTML(text string, emotes map[string]string) string {
+	var out strings.Builder
+	for i, word := range strings.Split(text, " ") {
+		if i > 0 {
+			out.WriteByte(' ')
+		}
+		if url, ok := emotes[word]; ok {
+			out.WriteString(`<img src="` + html.EscapeString(url) + `" alt="` + html.EscapeString(word) + `" class="regular-emote">`)
+		} else {
+			out.WriteString(html.EscapeString(word))
+		}
+	}
+	return out.String()
 }
 
 func (f *ssnForwarder) run() {

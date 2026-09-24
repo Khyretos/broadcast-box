@@ -113,7 +113,7 @@ func TestReactionsAreAggregated(t *testing.T) {
 	assert.True(t, s.handleReactionMessage([]byte(`{"type":"reaction","emoji":"🔥"}`)))
 	assert.True(t, s.handleReactionMessage([]byte(`{"type":"reaction","emoji":"🔥"}`)))
 	assert.True(t, s.handleReactionMessage([]byte(`{"type":"reaction"}`)))
-	assert.True(t, s.handleReactionMessage([]byte(`{"type":"reaction","emoji":"<script>"}`)), "disallowed emoji is consumed but not counted")
+	assert.True(t, s.handleReactionMessage([]byte(`{"type":"reaction","emoji":"<script>"}`)), "text is consumed but not counted")
 	assert.False(t, s.handleReactionMessage([]byte(`{"type":"other"}`)))
 
 	assert.Eventually(t, func() bool {
@@ -122,4 +122,27 @@ func TestReactionsAreAggregated(t *testing.T) {
 
 	assert.JSONEq(t, `{"type":"reactions","counts":{"🔥":2,"❤️":1}}`, viewerA.texts()[0])
 	assert.Equal(t, viewerA.texts(), viewerB.texts())
+}
+
+func TestReactionEmojiValidation(t *testing.T) {
+	for _, emoji := range []string{"❤️", "🔥", "👍🏽", "🇳🇱", "1️⃣", "👨‍👩‍👧", "🏳️‍🌈", "🫡", "☕"} {
+		assert.True(t, isReactionEmoji(emoji), emoji)
+	}
+	for _, text := range []string{"", "a", "hello", "1", "🔥 fire", "<b>", "🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥"} {
+		assert.False(t, isReactionEmoji(text), text)
+	}
+}
+
+func TestEmoteReactions(t *testing.T) {
+	s := &Session{StreamKey: "stream-1"}
+	viewer := &fakeDataChannel{}
+	s.addDataChannelPeer("a", viewer)
+
+	emote := `{"type":"reaction","emote":{"code":"catJAM","url":"https://cdn.7tv.app/emote/1/1x.webp"}}`
+	assert.True(t, s.handleReactionMessage([]byte(emote)))
+	assert.True(t, s.handleReactionMessage([]byte(emote)))
+	assert.True(t, s.handleReactionMessage([]byte(`{"type":"reaction","emote":{"code":"evil","url":"https://evil.example.com/x.gif"}}`)))
+
+	assert.Eventually(t, func() bool { return len(viewer.texts()) == 1 }, time.Second, 10*time.Millisecond)
+	assert.JSONEq(t, `{"type":"reactions","counts":{},"emotes":[{"code":"catJAM","url":"https://cdn.7tv.app/emote/1/1x.webp","count":2}]}`, viewer.texts()[0])
 }

@@ -1,5 +1,5 @@
-// Package emotes collects third party chat emotes (7TV, BetterTTV and
-// FrankerFaceZ) for a stream. Lists are fetched and cached by the server so
+// Package emotes collects third party chat emotes (Twitch, 7TV, BetterTTV
+// and FrankerFaceZ) for a stream. Lists are fetched and cached by the server so
 // viewers download one merged list instead of every viewer calling every
 // provider.
 package emotes
@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -26,9 +27,10 @@ const (
 	requestTimeout     = 10 * time.Second
 	maxResponseBytes   = 8 << 20
 
-	Provider7TV  = "7tv"
-	ProviderBTTV = "bttv"
-	ProviderFFZ  = "ffz"
+	Provider7TV    = "7tv"
+	ProviderBTTV   = "bttv"
+	ProviderFFZ    = "ffz"
+	ProviderTwitch = "twitch"
 )
 
 // Emote images are only accepted from the providers' own CDNs
@@ -36,6 +38,7 @@ var allowedImageHosts = map[string]bool{
 	"cdn.7tv.app":          true,
 	"cdn.betterttv.net":    true,
 	"cdn.frankerfacez.com": true,
+	"static-cdn.jtvnw.net": true,
 }
 
 var validEmoteCode = regexp.MustCompile(`^\S{1,100}$`)
@@ -62,31 +65,53 @@ type Service struct {
 	// Provider API base URLs, replaced in tests
 	baseURLs map[string]string
 
+	twitch *twitchClient
+
 	lock  sync.Mutex
 	cache map[string]cacheEntry
+
+	searchLock  sync.Mutex
+	searchCache map[string]cacheEntry
 }
 
 // DefaultService is nil when no providers are configured
 var DefaultService *Service
 
 // Setup reads CHAT_EMOTE_PROVIDERS (e.g. "7tv,bttv,ffz") and
-// CHAT_EMOTES_TWITCH_IDS ("<twitchID>" or "<streamKey>:<twitchID>,...")
+// CHAT_EMOTES_TWITCH_IDS ("<twitchID>" or "<streamKey>:<twitchID>,...").
+// Twitch's own emotes are added when TWITCH_CLIENT_ID and
+// TWITCH_CLIENT_SECRET are set.
 func Setup() {
 	var providers []string
 	for provider := range strings.SplitSeq(strings.ToLower(os.Getenv(environment.ChatEmoteProviders)), ",") {
 		switch provider = strings.TrimSpace(provider); provider {
-		case Provider7TV, ProviderBTTV, ProviderFFZ:
-			providers = append(providers, provider)
+		case Provider7TV, ProviderBTTV, ProviderFFZ, ProviderTwitch:
+			if !slices.Contains(providers, provider) {
+				providers = append(providers, provider)
+			}
 		case "":
 		default:
 			slog.Error("Emotes: unknown provider ignored", "provider", provider)
 		}
+	}
+
+	clientID, clientSecret := os.Getenv(environment.TwitchClientID), os.Getenv(environment.TwitchClientSecret)
+	hasTwitchCredentials := clientID != "" && clientSecret != ""
+	if hasTwitchCredentials && !slices.Contains(providers, ProviderTwitch) {
+		providers = append([]string{ProviderTwitch}, providers...)
+	}
+	if !hasTwitchCredentials && slices.Contains(providers, ProviderTwitch) {
+		slog.Error("Emotes: Twitch emotes need TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET")
+		providers = slices.DeleteFunc(providers, func(provider string) bool { return provider == ProviderTwitch })
 	}
 	if len(providers) == 0 {
 		return
 	}
 
 	DefaultService = New(providers, ParseTwitchIDs(os.Getenv(environment.ChatEmotesTwitchIDs)))
+	if hasTwitchCredentials {
+		DefaultService.twitch = newTwitchClient(DefaultService.client, clientID, clientSecret)
+	}
 	slog.Info("Emotes: enabled", "providers", providers, "twitchIDs", DefaultService.twitchIDs)
 }
 
@@ -112,11 +137,13 @@ func New(providers []string, twitchIDs map[string]string) *Service {
 		twitchIDs: twitchIDs,
 		client:    &http.Client{Timeout: requestTimeout},
 		baseURLs: map[string]string{
-			Provider7TV:  "https://7tv.io",
-			ProviderBTTV: "https://api.betterttv.net",
-			ProviderFFZ:  "https://api.frankerfacez.com",
+			Provider7TV:    "https://7tv.io",
+			ProviderBTTV:   "https://api.betterttv.net",
+			ProviderFFZ:    "https://api.frankerfacez.com",
+			ProviderTwitch: "https://api.twitch.tv",
 		},
-		cache: map[string]cacheEntry{},
+		cache:       map[string]cacheEntry{},
+		searchCache: map[string]cacheEntry{},
 	}
 }
 
@@ -163,13 +190,19 @@ func (s *Service) cached(ctx context.Context, key string, fetch func(context.Con
 		return entry.emotes
 	}
 
-	emotes, err := fetch(ctx)
+	// Don't let a viewer closing the page abort a fetch everyone shares
+	fetchContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*requestTimeout)
+	defer cancel()
+
+	emotes, err := fetch(fetchContext)
 	expires := time.Now().Add(cacheDuration)
 	if err != nil {
 		slog.Error("Emotes: fetching failed", "list", key, "err", err)
 		// Keep serving the previous list, and don't hammer a failing provider
 		emotes = entry.emotes
 		expires = time.Now().Add(errorRetryInterval)
+	} else {
+		slog.Info("Emotes: loaded", "list", key, "count", len(emotes))
 	}
 
 	s.lock.Lock()
@@ -192,7 +225,8 @@ func (s *Service) getJSON(ctx context.Context, provider, path string, target any
 	defer response.Body.Close()
 
 	if response.StatusCode == http.StatusNotFound {
-		return nil // channel doesn't use this provider
+		slog.Info("Emotes: not found at provider, the channel may not use it", "provider", provider, "path", path)
+		return nil
 	}
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("%s returned %d", path, response.StatusCode)
@@ -210,6 +244,8 @@ func (s *Service) fetchGlobal(ctx context.Context, provider string) ([]Emote, er
 		var emotes []bttvEmote
 		err := s.getJSON(ctx, provider, "/3/cached/emotes/global", &emotes)
 		return bttvEmotes(emotes), err
+	case ProviderTwitch:
+		return s.fetchTwitch(ctx, "/helix/chat/emotes/global")
 	case ProviderFFZ:
 		var response ffzGlobalResponse
 		err := s.getJSON(ctx, provider, "/v1/set/global", &response)
@@ -225,6 +261,8 @@ func (s *Service) fetchGlobal(ctx context.Context, provider string) ([]Emote, er
 func (s *Service) fetchChannel(ctx context.Context, provider, twitchID string) ([]Emote, error) {
 	id := url.PathEscape(twitchID)
 	switch provider {
+	case ProviderTwitch:
+		return s.fetchTwitch(ctx, "/helix/chat/emotes?broadcaster_id="+url.QueryEscape(twitchID))
 	case Provider7TV:
 		var user struct {
 			EmoteSet sevenTVEmoteSet `json:"emote_set"`
@@ -253,46 +291,54 @@ func (s *Service) fetchChannel(ctx context.Context, provider, twitchID string) (
 
 // Provider response formats
 
+type sevenTVHost struct {
+	URL   string `json:"url"`
+	Files []struct {
+		Name string `json:"name"`
+	} `json:"files"`
+}
+
+type sevenTVEmoteData struct {
+	Animated bool        `json:"animated"`
+	Host     sevenTVHost `json:"host"`
+}
+
 type sevenTVEmoteSet struct {
 	Emotes []struct {
-		Name string `json:"name"`
-		Data struct {
-			Animated bool `json:"animated"`
-			Host     struct {
-				URL   string `json:"url"`
-				Files []struct {
-					Name string `json:"name"`
-				} `json:"files"`
-			} `json:"host"`
-		} `json:"data"`
+		Name string           `json:"name"`
+		Data sevenTVEmoteData `json:"data"`
 	} `json:"emotes"`
 }
 
 func (set sevenTVEmoteSet) emotes() (emotes []Emote) {
 	for _, emote := range set.Emotes {
-		files := map[string]bool{}
-		for _, file := range emote.Data.Host.Files {
-			files[file.Name] = true
-		}
-		file1x, file2x := "1x.webp", "2x.webp"
-		if !files[file1x] && files["1x.avif"] {
-			file1x, file2x = "1x.avif", "2x.avif"
-		}
-
-		base := absoluteURL(emote.Data.Host.URL)
-		url2x := ""
-		if files[file2x] {
-			url2x = base + "/" + file2x
-		}
-		emotes = appendEmote(emotes, Emote{
-			Code:     emote.Name,
-			URL:      base + "/" + file1x,
-			URL2x:    url2x,
-			Provider: Provider7TV,
-			Animated: emote.Data.Animated,
-		})
+		emotes = appendEmote(emotes, sevenTVEmote(emote.Name, emote.Data))
 	}
 	return emotes
+}
+
+func sevenTVEmote(name string, data sevenTVEmoteData) Emote {
+	files := map[string]bool{}
+	for _, file := range data.Host.Files {
+		files[file.Name] = true
+	}
+	file1x, file2x := "1x.webp", "2x.webp"
+	if !files[file1x] && files["1x.avif"] {
+		file1x, file2x = "1x.avif", "2x.avif"
+	}
+
+	base := absoluteURL(data.Host.URL)
+	url2x := ""
+	if files[file2x] {
+		url2x = base + "/" + file2x
+	}
+	return Emote{
+		Code:     name,
+		URL:      base + "/" + file1x,
+		URL2x:    url2x,
+		Provider: Provider7TV,
+		Animated: data.Animated,
+	}
 }
 
 type bttvEmote struct {
@@ -350,6 +396,17 @@ func absoluteURL(value string) string {
 		return "https:" + value
 	}
 	return value
+}
+
+// IsAllowedImageURL reports whether an emote image URL points at one of the
+// providers' CDNs
+func IsAllowedImageURL(value string) bool {
+	return isAllowedImage(value)
+}
+
+// IsValidCode reports whether an emote code is acceptable in chat
+func IsValidCode(code string) bool {
+	return validEmoteCode.MatchString(code)
 }
 
 func isAllowedImage(value string) bool {

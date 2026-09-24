@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/glimesh/broadcast-box/internal/clips"
 	"github.com/glimesh/broadcast-box/internal/webrtc/codecs"
 	"github.com/glimesh/broadcast-box/internal/webrtc/sessions/whep"
 	"github.com/pion/rtp"
@@ -103,6 +104,7 @@ func (w *WHIPSession) videoWriter(remoteTrack *webrtc.TrackRemote, streamKey str
 
 	bitrateWindowStart := time.Now()
 	bitrateWindowBytes := uint64(0)
+	bitrateWindowFrames := 0
 
 	rtpPkt := &rtp.Packet{}
 	pktBuf := make([]byte, 1500)
@@ -140,13 +142,24 @@ func (w *WHIPSession) videoWriter(remoteTrack *webrtc.TrackRemote, streamKey str
 		isKeyframe := codecs.IsKeyframe(rtpPkt.Payload, codec)
 		if isKeyframe {
 			track.LastKeyFrame.Store(time.Now())
+			if width, height, ok := clips.ResolutionFromRTP(codec, rtpPkt.Payload); ok {
+				track.Width.Store(uint32(width))
+				track.Height.Store(uint32(height))
+			}
+		}
+
+		// A new RTP timestamp starts a new frame
+		if !lastTimestampSet || rtpPkt.Timestamp != lastTimestamp {
+			bitrateWindowFrames++
 		}
 
 		now := time.Now()
 		if elapsed := now.Sub(bitrateWindowStart); elapsed >= time.Second {
 			track.Bitrate.Store(uint64(float64(bitrateWindowBytes) / elapsed.Seconds()))
+			track.FramesPerSecond.Store(uint32(math.Round(float64(bitrateWindowFrames) * 100 / elapsed.Seconds())))
 			bitrateWindowStart = now
 			bitrateWindowBytes = 0
+			bitrateWindowFrames = 0
 		}
 
 		timeDiff := int64(rtpPkt.Timestamp) - int64(lastTimestamp)

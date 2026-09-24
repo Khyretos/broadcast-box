@@ -3,6 +3,9 @@ package whip
 import (
 	"encoding/json"
 	"log/slog"
+	"math"
+	"slices"
+	"strings"
 )
 
 // Returns all available Video and Audio layers of the provided stream key
@@ -13,11 +16,24 @@ func (w *WHIPSession) GetAvailableLayersEvent() string {
 	w.TracksLock.RLock()
 
 	// Add available video layers
-	for track := range w.VideoTracks {
+	for _, track := range w.VideoTracks {
 		videoLayers = append(videoLayers, simulcastLayerResponse{
-			EncodingID: w.VideoTracks[track].Rid,
+			EncodingID:      track.Rid,
+			Width:           track.Width.Load(),
+			Height:          track.Height.Load(),
+			FramesPerSecond: math.Round(float64(track.FramesPerSecond.Load())) / 100,
+			Bitrate:         track.Bitrate.Load() * 8,
+			priority:        track.Priority,
 		})
 	}
+
+	// Best layer first
+	slices.SortFunc(videoLayers, func(a, b simulcastLayerResponse) int {
+		if a.priority != b.priority {
+			return a.priority - b.priority
+		}
+		return strings.Compare(a.EncodingID, b.EncodingID)
+	})
 
 	// Add available audio layers
 	for track := range w.AudioTracks {

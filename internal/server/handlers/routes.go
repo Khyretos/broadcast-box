@@ -35,6 +35,7 @@ func GetServeMuxHandler() http.HandlerFunc {
 
 	// Third party chat emotes
 	serverMux.HandleFunc("/api/chat/emotes", corsHandler(emotesHandler))
+	serverMux.HandleFunc("/api/chat/emotes/search", corsHandler(emoteSearchHandler))
 
 	// Clips
 	serverMux.HandleFunc("/api/clips", corsHandler(clipsHandler))

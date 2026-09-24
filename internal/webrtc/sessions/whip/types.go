@@ -38,9 +38,15 @@ type (
 	}
 
 	VideoTrack struct {
-		Rid             string
-		Priority        int
-		Bitrate         atomic.Uint64
+		Rid      string
+		Priority int
+		Bitrate  atomic.Uint64 // bytes per second
+
+		// Detected from the stream, shown as the layer's quality
+		Width           atomic.Uint32
+		Height          atomic.Uint32
+		FramesPerSecond atomic.Uint32 // hundredths of a frame per second
+
 		PacketsReceived atomic.Uint64
 		PacketsDropped  atomic.Uint64
 		LastReceived    atomic.Value

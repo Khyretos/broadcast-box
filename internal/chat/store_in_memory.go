@@ -133,16 +133,16 @@ func (s *InMemoryStore) Send(sessionID string, text string, displayName string, 
 		return fmt.Errorf("room not found")
 	}
 
-	s.sendToRoom(streamKey, r, text, displayName, now)
+	s.sendToRoom(streamKey, r, text, displayName, nil, now)
 	return nil
 }
 
-func (s *InMemoryStore) SendToStream(streamKey string, text string, displayName string, now time.Time) error {
+func (s *InMemoryStore) SendToStream(streamKey string, text string, displayName string, emotes map[string]string, now time.Time) error {
 	s.mu.Lock()
 	r := s.getOrCreateRoomLocked(streamKey, now)
 	s.mu.Unlock()
 
-	s.sendToRoom(streamKey, r, text, displayName, now)
+	s.sendToRoom(streamKey, r, text, displayName, emotes, now)
 	return nil
 }
 
@@ -209,7 +209,7 @@ func (s *InMemoryStore) subscribeToRoom(r *room, lastEventID uint64, now time.Ti
 	return ch, cleanup, history, nil
 }
 
-func (s *InMemoryStore) sendToRoom(streamKey string, r *room, text string, displayName string, now time.Time) {
+func (s *InMemoryStore) sendToRoom(streamKey string, r *room, text string, displayName string, emotes map[string]string, now time.Time) {
 	r.mu.Lock()
 
 	r.lastActivity = now
@@ -221,6 +221,7 @@ func (s *InMemoryStore) sendToRoom(streamKey string, r *room, text string, displ
 			TS:          now.UnixMilli(),
 			Text:        text,
 			DisplayName: displayName,
+			Emotes:      emotes,
 		},
 	}
 	r.nextEventID++
@@ -242,7 +243,7 @@ func (s *InMemoryStore) sendToRoom(streamKey string, r *room, text string, displ
 
 	// Forward to Social Stream Ninja, if configured.
 	if s.ssn != nil {
-		s.ssn.forward(streamKey, displayName, text)
+		s.ssn.forward(streamKey, displayName, text, emotes)
 	}
 }
 

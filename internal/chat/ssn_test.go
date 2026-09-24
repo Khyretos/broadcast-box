@@ -75,9 +75,9 @@ func TestSSNForwarderDeliversAcrossReconnects(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond)
 	time.Sleep(200 * time.Millisecond)
 
-	f.forward("mine", "viewer", "first")
-	f.forward("someone-else", "viewer", "ignored")
-	f.forward("mine", "viewer", "second")
+	f.forward("mine", "viewer", "first", nil)
+	f.forward("someone-else", "viewer", "ignored", nil)
+	f.forward("mine", "viewer", "second", nil)
 
 	require.Eventually(t, func() bool {
 		mu.Lock()
@@ -89,4 +89,10 @@ func TestSSNForwarderDeliversAcrossReconnects(t *testing.T) {
 	defer mu.Unlock()
 	require.Equal(t, []string{"first", "second"}, received)
 	require.GreaterOrEqual(t, connections, 2)
+}
+
+func TestSSNMessageHTML(t *testing.T) {
+	require.Equal(t,
+		`hi <img src="https://cdn.7tv.app/emote/1/1x.webp" alt="catJAM" class="regular-emote"> &lt;b&gt;bold&lt;/b&gt;`,
+		ssnMessageHTML("hi catJAM <b>bold</b>", map[string]string{"catJAM": "https://cdn.7tv.app/emote/1/1x.webp"}))
 }

@@ -2,6 +2,7 @@ package emotes
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -86,4 +87,93 @@ func TestForStreamMergesProviders(t *testing.T) {
 func TestParseTwitchIDs(t *testing.T) {
 	require.Equal(t, map[string]string{"": "42"}, ParseTwitchIDs("42"))
 	require.Equal(t, map[string]string{"a": "1", "b": "2"}, ParseTwitchIDs(" a:1 , b:2 "))
+}
+
+func TestTwitchEmotes(t *testing.T) {
+	tokenRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth2/token":
+			tokenRequests++
+			require.NoError(t, r.ParseForm())
+			require.Equal(t, "client", r.PostForm.Get("client_id"))
+			require.Equal(t, "client_credentials", r.PostForm.Get("grant_type"))
+			_, _ = w.Write([]byte(`{"access_token":"token123","expires_in":3600,"token_type":"bearer"}`))
+		case "/helix/chat/emotes":
+			require.Equal(t, "781056551", r.URL.Query().Get("broadcaster_id"))
+			require.Equal(t, "Bearer token123", r.Header.Get("Authorization"))
+			require.Equal(t, "client", r.Header.Get("Client-Id"))
+			_, _ = w.Write([]byte(`{"data":[{"id":"emotesv2_abc","name":"khyretHype","format":["static","animated"]}],
+				"template":"https://static-cdn.jtvnw.net/emoticons/v2/{{id}}/{{format}}/{{theme_mode}}/{{scale}}"}`))
+		case "/helix/chat/emotes/global":
+			_, _ = w.Write([]byte(`{"data":[{"id":"25","name":"Kappa","format":["static"]}],
+				"template":"https://static-cdn.jtvnw.net/emoticons/v2/{{id}}/{{format}}/{{theme_mode}}/{{scale}}"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	service := New([]string{ProviderTwitch}, ParseTwitchIDs("781056551"))
+	service.baseURLs[ProviderTwitch] = server.URL
+	service.twitch = newTwitchClient(service.client, "client", "secret")
+	service.twitch.tokenURL = server.URL + "/oauth2/token"
+
+	list := service.ForStream(context.Background(), "any-stream")
+	require.Len(t, list, 2)
+	require.Equal(t, Emote{
+		Code:     "khyretHype",
+		URL:      "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/animated/dark/1.0",
+		URL2x:    "https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_abc/animated/dark/2.0",
+		Provider: ProviderTwitch,
+		Animated: true,
+	}, list[0])
+	require.Equal(t, "Kappa", list[1].Code)
+	require.Equal(t, "https://static-cdn.jtvnw.net/emoticons/v2/25/static/dark/1.0", list[1].URL)
+	require.Equal(t, 1, tokenRequests, "the token is reused")
+}
+
+func TestSearch(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch r.URL.Path {
+		case "/v3/gql":
+			var body struct {
+				Variables struct {
+					Query string `json:"query"`
+				} `json:"variables"`
+			}
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			require.Equal(t, "pepe", body.Variables.Query)
+			_, _ = w.Write([]byte(`{"data":{"emotes":{"items":[
+				{"id":"1","name":"pepeD","animated":true,"host":{"url":"//cdn.7tv.app/emote/1","files":[{"name":"1x.webp"},{"name":"2x.webp"}]}},
+				{"id":"2","name":"pepeLaugh","animated":false,"host":{"url":"//cdn.7tv.app/emote/2","files":[{"name":"1x.webp"}]}}]}}}`))
+		case "/3/emotes/shared/search":
+			require.Equal(t, "pepe", r.URL.Query().Get("query"))
+			_, _ = w.Write([]byte(`[{"id":"b1","code":"pepeJAM","animated":true}]`))
+		case "/v1/emotes":
+			require.Equal(t, "pepe", r.URL.Query().Get("q"))
+			_, _ = w.Write([]byte(`{"emoticons":[{"id":9,"name":"PepeHands","urls":{"1":"https://cdn.frankerfacez.com/emote/9/1"}}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	service := New([]string{Provider7TV, ProviderBTTV, ProviderFFZ}, nil)
+	for provider := range service.baseURLs {
+		service.baseURLs[provider] = server.URL
+	}
+
+	var codes []string
+	for _, emote := range service.Search(context.Background(), "pepe") {
+		codes = append(codes, emote.Code)
+	}
+	// Interleaved: first result of every provider, then the second...
+	require.Equal(t, []string{"pepeD", "pepeJAM", "PepeHands", "pepeLaugh"}, codes)
+
+	service.Search(context.Background(), "PEPE")
+	require.Equal(t, 3, requests, "searches are cached case insensitively")
+	require.Empty(t, service.Search(context.Background(), "p"), "queries need 2 characters")
 }

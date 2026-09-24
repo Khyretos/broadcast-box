@@ -31,6 +31,9 @@ const (
 	ChatCleanupInterval = "CHAT_CLEANUP_INTERVAL"
 	ChatEmoteProviders  = "CHAT_EMOTE_PROVIDERS"
 	ChatEmotesTwitchIDs = "CHAT_EMOTES_TWITCH_IDS"
+	ChatGIFHosts        = "CHAT_GIF_HOSTS"
+	TwitchClientID      = "TWITCH_CLIENT_ID"
+	TwitchClientSecret  = "TWITCH_CLIENT_SECRET"
 
 	// NOTIFICATIONS
 	DiscordWebhookURL        = "DISCORD_WEBHOOK_URL"

@@ -21,6 +21,9 @@ type Message struct {
 	TS          int64  `json:"ts"`
 	Text        string `json:"text"`
 	DisplayName string `json:"displayName"`
+
+	// Emote code to image URL, for emotes other viewers may not have loaded
+	Emotes map[string]string `json:"emotes,omitempty"`
 }
 
 type Event struct {
@@ -42,7 +45,7 @@ type Store interface {
 	Subscribe(sessionID string, lastEventID uint64, now time.Time) (chan Event, func(), []Event, error)
 	SubscribeStream(streamKey string, lastEventID uint64, now time.Time) (chan Event, func(), []Event, error)
 	Send(sessionID string, text string, displayName string, now time.Time) error
-	SendToStream(streamKey string, text string, displayName string, now time.Time) error
+	SendToStream(streamKey string, text string, displayName string, emotes map[string]string, now time.Time) error
 	Cleanup(now time.Time, ttl time.Duration)
 }
 
@@ -115,8 +118,8 @@ func (m *Manager) SubscribeStream(streamKey string, lastEventID uint64) (chan Ev
 	return m.store.SubscribeStream(streamKey, lastEventID, time.Now())
 }
 
-func (m *Manager) SendToStream(streamKey string, text string, displayName string) error {
-	return m.store.SendToStream(streamKey, text, displayName, time.Now())
+func (m *Manager) SendToStream(streamKey string, text string, displayName string, emotes map[string]string) error {
+	return m.store.SendToStream(streamKey, text, displayName, emotes, time.Now())
 }
 
 func (m *Manager) cleanupLoop() {
