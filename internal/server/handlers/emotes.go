@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"slices"
@@ -61,6 +62,29 @@ func gifSearchHandler(responseWriter http.ResponseWriter, request *http.Request)
 	}
 	responseWriter.Header().Set("Cache-Control", "public, max-age=60")
 	writeJSON(responseWriter, result)
+}
+
+// GET /api/chat/gifs/resolve?url=<link> returns the GIF behind the link of a
+// KLIPY or Giphy web page, chat can only show the GIF file itself
+func gifResolveHandler(responseWriter http.ResponseWriter, request *http.Request) {
+	if !gifSearchLimiters.allow(clientAddress(request)) {
+		helpers.LogHTTPError(responseWriter, "Too many searches", http.StatusTooManyRequests)
+		return
+	}
+
+	gif, err := gifs.ResolveLink(request.Context(), request.URL.Query().Get("url"))
+	if err != nil {
+		reason := "unsupported"
+		if errors.Is(err, gifs.ErrGIFNotFound) {
+			reason = "not_found"
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		responseWriter.WriteHeader(http.StatusNotFound)
+		writeJSON(responseWriter, map[string]string{"error": reason})
+		return
+	}
+	responseWriter.Header().Set("Cache-Control", "public, max-age=86400")
+	writeJSON(responseWriter, gif)
 }
 
 // GET /api/chat/emotes/search?q=<query> searches 7TV, BetterTTV and FrankerFaceZ

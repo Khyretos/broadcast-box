@@ -2,7 +2,7 @@ import { RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, use
 import { createPortal } from "react-dom";
 import { LocaleContext } from "../../../providers/LocaleProvider";
 import { EmojiCategory, loadEmojiCategories, searchEmojis } from "../functions/emojiData";
-import { Emote, GifSearchResult, StreamEmotes, gifApiName, isAllowedGifUrl, providerName, searchEmotes, searchGifs } from "../../../hooks/useEmotes";
+import { Emote, GifLinkError, GifSearchResult, StreamEmotes, gifApiName, isAllowedGifUrl, isLink, providerName, resolveGifLink, searchEmotes, searchGifs } from "../../../hooks/useEmotes";
 import { fuzzyFilter, fuzzyScore } from "../functions/fuzzy";
 import { RecentItem, getRecent, onRecentChanged } from "../functions/recentItems";
 
@@ -61,12 +61,13 @@ const MediaPicker = (props: MediaPickerProps) => {
 	const [tab, setTab] = useState<Tab>("emoji");
 	const [search, setSearch] = useState("");
 	const [remote, setRemote] = useState<{ query: string; emotes: Emote[] }>({ query: "", emotes: [] });
-	const [gifResults, setGifResults] = useState<GifSearchResult & { query: string; includesApis: boolean }>();
+	const [gifResults, setGifResults] = useState<GifSearchResult & { query: string; includesApis: boolean; linkError?: GifLinkError }>();
 	// Giphy and KLIPY allow few requests per hour: only searched for the query
 	// the viewer pressed enter on
 	const [apiQuery, setApiQuery] = useState<string>();
 	const [gifLink, setGifLink] = useState("");
-	const [gifError, setGifError] = useState(false);
+	const [gifError, setGifError] = useState<GifLinkError>();
+	const [isResolvingLink, setIsResolvingLink] = useState(false);
 	const [position, setPosition] = useState<{ left: number; bottom: number; width: number; height: number }>();
 	const containerRef = useRef<HTMLDivElement>(null);
 	const recent = useRecentItems();
@@ -141,14 +142,27 @@ const MediaPicker = (props: MediaPickerProps) => {
 	const gifSources = emotes.gifSources;
 	const hasGifApis = gifSources.apis.length > 0;
 	const hasGifSearch = hasGifApis || gifSources.slink.length > 0;
-	const includeApis = hasGifApis && query !== "" && apiQuery === query;
+	// A link pasted in the search shows the GIF behind it
+	const queryIsLink = tab === "gifs" && isLink(query);
+	const includeApis = hasGifApis && query !== "" && !queryIsLink && apiQuery === query;
 
 	// Slink is searched while typing (newest images when empty), Giphy and KLIPY on enter
 	useEffect(() => {
-		if (tab !== "gifs" || (!includeApis && gifSources.slink.length === 0)) {
+		if (tab !== "gifs" || (!includeApis && !queryIsLink && gifSources.slink.length === 0)) {
 			return;
 		}
 		let cancelled = false;
+		if (queryIsLink) {
+			resolveGifLink(query, emotes.gifHosts).then((result) => !cancelled && setGifResults({
+				query,
+				includesApis: false,
+				gifs: "gif" in result ? [result.gif] : [],
+				linkError: "error" in result ? result.error : undefined,
+			}));
+			return () => {
+				cancelled = true;
+			};
+		}
 		const timeout = setTimeout(() => {
 			searchGifs(query, includeApis).then((result) => !cancelled && setGifResults({ ...result, query, includesApis: includeApis }));
 		}, query && !includeApis ? SEARCH_DELAY_MS : 0);
@@ -156,10 +170,10 @@ const MediaPicker = (props: MediaPickerProps) => {
 			cancelled = true;
 			clearTimeout(timeout);
 		};
-	}, [gifSources.slink.length, includeApis, query, tab]);
+	}, [emotes.gifHosts, gifSources.slink.length, includeApis, query, queryIsLink, tab]);
 
 	const currentGifResults = gifResults?.query === query && gifResults.includesApis === includeApis ? gifResults : undefined;
-	const isSearchingGifs = tab === "gifs" && (includeApis || gifSources.slink.length > 0) && !currentGifResults;
+	const isSearchingGifs = tab === "gifs" && (includeApis || queryIsLink || gifSources.slink.length > 0) && !currentGifResults;
 	const resultApis = gifSources.apis.filter((api) => currentGifResults?.gifs.some((gif) => gif.provider === api));
 
 	const recentGifs = useMemo(() => {
@@ -193,15 +207,24 @@ const MediaPicker = (props: MediaPickerProps) => {
 	const pickEmote = (emote: Emote) => onPick({ kind: "emote", emote });
 
 	const addGifLink = () => {
-		const url = gifLink.trim();
-		if (!isAllowedGifUrl(url, emotes.gifHosts)) {
-			setGifError(true);
+		const link = gifLink.trim();
+		if (!link || isResolvingLink) {
 			return;
 		}
-		setGifLink("");
-		setGifError(false);
-		onPick({ kind: "gif", url });
+		setIsResolvingLink(true);
+		resolveGifLink(link, emotes.gifHosts).then((result) => {
+			setIsResolvingLink(false);
+			if ("error" in result) {
+				setGifError(result.error);
+				return;
+			}
+			setGifLink("");
+			setGifError(undefined);
+			onPick({ kind: "gif", url: result.gif.url, preview: result.gif.preview, title: result.gif.title });
+		});
 	};
+
+	const linkErrorMessage = (error: GifLinkError) => error === "not_found" ? locale.chat.gif_link_not_found : locale.chat.gif_host_not_allowed;
 
 	const tabs: Tab[] = mode === "chat" ? ["emoji", "emotes", "gifs"] : ["emoji", "emotes"];
 	const tabLabel = (value: Tab) => ({
@@ -240,7 +263,7 @@ const MediaPicker = (props: MediaPickerProps) => {
 					value={search}
 					onChange={(event) => setSearch(event.target.value)}
 					onKeyDown={(event) => {
-						if (event.key === "Enter" && tab === "gifs" && hasGifApis && query) {
+						if (event.key === "Enter" && tab === "gifs" && hasGifApis && query && !queryIsLink) {
 							event.preventDefault();
 							setApiQuery(query);
 						}
@@ -253,7 +276,7 @@ const MediaPicker = (props: MediaPickerProps) => {
 					className="m-2 h-8 rounded-md border border-gray-700 bg-gray-800 px-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-hidden"
 				/>
 			)}
-			{tab === "gifs" && hasGifApis && query && !includeApis && (
+			{tab === "gifs" && hasGifApis && query && !queryIsLink && !includeApis && (
 				<p className="-mt-1 mb-1 px-2 text-[11px] text-gray-400">{locale.chat.gif_press_enter_search.replace("{providers}", gifApiNames(gifSources.apis))}</p>
 			)}
 
@@ -372,6 +395,7 @@ const MediaPicker = (props: MediaPickerProps) => {
 							</SectionTitle>
 						)}
 						{isSearchingGifs && <p className="animate-pulse p-2 text-xs text-gray-400">{locale.chat.emotes_searching}</p>}
+						{currentGifResults?.linkError && <p className="p-2 text-xs text-red-300">{linkErrorMessage(currentGifResults.linkError)}</p>}
 						{currentGifResults?.limited && currentGifResults.limited.length > 0 && (
 							<p className="p-2 text-xs text-yellow-300">{locale.chat.gif_search_limited.replace("{providers}", gifApiNames(currentGifResults.limited))}</p>
 						)}
@@ -419,17 +443,17 @@ const MediaPicker = (props: MediaPickerProps) => {
 									value={gifLink}
 									onChange={(event) => {
 										setGifLink(event.target.value);
-										setGifError(false);
+										setGifError(undefined);
 									}}
 									placeholder={locale.chat.gif_link_placeholder}
 									className="h-8 min-w-0 flex-1 rounded-md border border-gray-700 bg-gray-800 px-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-hidden"
 								/>
-								<button type="submit" className="rounded-md bg-blue-600 px-3 text-xs font-semibold hover:bg-blue-500">
+								<button type="submit" disabled={isResolvingLink} className="rounded-md bg-blue-600 px-3 text-xs font-semibold hover:bg-blue-500 disabled:animate-pulse">
 									{locale.chat.gif_add}
 								</button>
 							</form>
 						)}
-						{gifError && <p className="mt-1 text-xs text-red-300">{locale.chat.gif_host_not_allowed}</p>}
+						{gifError && <p className="mt-1 text-xs text-red-300">{linkErrorMessage(gifError)}</p>}
 					</>
 				)}
 			</div>

@@ -473,6 +473,10 @@ after `GIPHY_HOURLY_LIMIT` searches in an hour, so the key is never blocked. Gip
 and pressing Enter searches Giphy and KLIPY together, each with its own hourly limit (`KLIPY_HOURLY_LIMIT`). KLIPY's
 GIFs come from `static.klipy.com`, which is then allowed in chat automatically.
 
+Links to a GIF's web page (`https://klipy.com/gifs/...`, `https://giphy.com/gifs/...`) can be pasted in the GIF tab too:
+the server looks up the GIF file behind them. KLIPY pages are read from their preview tags, with KLIPY's search as a
+fallback when `KLIPY_API_KEY` is set.
+
 | Variable                 | Description                                                                                                           |
 |--------------------------|-----------------------------------------------------------------------------------------------------------------------|
 | `CHAT_EMOTE_PROVIDERS`   | Comma separated emote providers: `7tv`, `bttv` and/or `ffz`. Twitch is added when its credentials are set.          |

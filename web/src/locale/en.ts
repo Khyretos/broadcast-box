@@ -218,6 +218,7 @@ const locale_en: localeInterface = {
     gif_link_placeholder: "Paste a GIF link",
     gif_add: "Add",
     gif_host_not_allowed: "GIFs from this site are not allowed here.",
+    gif_link_not_found: "Couldn't find a GIF at this link. Right-click the GIF and copy its image address instead.",
     gif_search_placeholder: "Search GIFs",
     gifs_trending: "Trending",
     gifs_search_results: "Results",

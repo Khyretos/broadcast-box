@@ -37,6 +37,7 @@ func GetServeMuxHandler() http.HandlerFunc {
 	serverMux.HandleFunc("/api/chat/emotes", corsHandler(emotesHandler))
 	serverMux.HandleFunc("/api/chat/emotes/search", corsHandler(emoteSearchHandler))
 	serverMux.HandleFunc("/api/chat/gifs/search", corsHandler(gifSearchHandler))
+	serverMux.HandleFunc("/api/chat/gifs/resolve", corsHandler(gifResolveHandler))
 
 	// Clips
 	serverMux.HandleFunc("/api/clips", corsHandler(clipsHandler))

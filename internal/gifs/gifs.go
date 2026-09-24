@@ -50,6 +50,8 @@ type GIF struct {
 	Title    string `json:"title,omitempty"`
 	Provider string `json:"provider"`
 	Source   string `json:"source"` // host the GIF comes from
+
+	pageURL string // the GIF's web page, for resolving pasted page links
 }
 
 type SearchResult struct {
@@ -510,6 +512,7 @@ func (s *Service) searchKlipy(ctx context.Context, provider *apiProvider, query 
 		Results []struct {
 			Title              string           `json:"title"`
 			ContentDescription string           `json:"content_description"`
+			ItemURL            string           `json:"itemurl"`
 			MediaFormats       map[string]media `json:"media_formats"`
 		} `json:"results"`
 	}
@@ -532,7 +535,7 @@ func (s *Service) searchKlipy(ctx context.Context, provider *apiProvider, query 
 		if title == "" {
 			title = item.ContentDescription
 		}
-		gif := GIF{URL: full.URL, Preview: preview.URL, Title: title, Provider: ProviderKlipy, Source: "klipy.com"}
+		gif := GIF{URL: full.URL, Preview: preview.URL, Title: title, Provider: ProviderKlipy, Source: "klipy.com", pageURL: item.ItemURL}
 		if len(full.Dims) == 2 {
 			gif.Width, gif.Height = full.Dims[0], full.Dims[1]
 		}

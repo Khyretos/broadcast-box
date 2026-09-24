@@ -218,6 +218,7 @@ const locale_da: localeInterface = {
     gif_link_placeholder: "Indsæt et GIF-link",
     gif_add: "Tilføj",
     gif_host_not_allowed: "GIF'er fra denne side er ikke tilladt her.",
+    gif_link_not_found: "Kunne ikke finde en GIF på dette link. Højreklik på GIF'en og kopier billedadressen i stedet.",
     gif_search_placeholder: "Søg efter GIF'er",
     gifs_trending: "Populære",
     gifs_search_results: "Resultater",
