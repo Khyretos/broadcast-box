@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/glimesh/broadcast-box/internal/notify"
 	"github.com/glimesh/broadcast-box/internal/server/authorization"
@@ -52,13 +53,22 @@ func (s *Session) AddWHEP(whepSessionID string, peerConnection *webrtc.PeerConne
 	return nil
 }
 
+// Time without media after which a new publisher may replace the current one
+const hostTakeoverTimeout = 5 * time.Second
+
 // Add host
 func (s *Session) AddHost(peerConnection *webrtc.PeerConnection) (err error) {
 	slog.Debug("Session.AddHost")
 
 	// A publisher that reconnects (e.g. OBS after a network hiccup) replaces the
 	// previous connection, instead of being rejected until the old one times out.
+	// A host that is still sending media can not be replaced, as the stream key
+	// alone is enough to publish to streams without a reserved profile.
 	if existingHost := s.Host.Load(); existingHost != nil {
+		if existingHost.IsActive(hostTakeoverTimeout) {
+			return fmt.Errorf("stream already has an active publisher")
+		}
+
 		slog.Info("Session.AddHost: Replacing existing host", "streamKey", s.StreamKey, "previousID", existingHost.ID)
 		s.removeHost(existingHost)
 	}
@@ -68,6 +78,7 @@ func (s *Session) AddHost(peerConnection *webrtc.PeerConnection) (err error) {
 		AudioTracks: make(map[string]*whip.AudioTrack),
 		VideoTracks: make(map[string]*whip.VideoTrack),
 	}
+	host.MarkActive()
 	host.SetOnClosed(func() { s.handleHostClosed(host) })
 	host.SetOnConnected(func() { notify.StreamOnline(s.StreamKey) })
 

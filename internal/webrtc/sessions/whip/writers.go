@@ -46,6 +46,8 @@ func (w *WHIPSession) audioWriter(remoteTrack *webrtc.TrackRemote, streamKey str
 			continue
 		}
 
+		w.MarkActive()
+
 		track.PacketsReceived.Add(1)
 
 		err = rtpPkt.Unmarshal(rtpBuf[:rtpRead])
@@ -132,6 +134,8 @@ func (w *WHIPSession) videoWriter(remoteTrack *webrtc.TrackRemote, streamKey str
 		if rtpRead == 0 {
 			continue
 		}
+
+		w.MarkActive()
 
 		err = rtpPkt.Unmarshal(pktBuf[:rtpRead])
 		if err != nil {

@@ -10,11 +10,14 @@ import (
 
 type (
 	WHIPSession struct {
-		ID                 string
-		PeerConnection     *webrtc.PeerConnection
-		closeOnce          sync.Once
-		onClosed           func()
-		onConnected        func()
+		ID             string
+		PeerConnection *webrtc.PeerConnection
+		closeOnce      sync.Once
+		onClosed       func()
+		onConnected    func()
+
+		// Unix nanoseconds of the last received media packet, or of creation
+		lastActivity       atomic.Int64
 		PeerConnectionLock sync.RWMutex
 
 		// Protects AudioTrack, VideoTracks

@@ -5,8 +5,6 @@ services:
     hostname: broadcast-box
     container_name: broadcast-box
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       UDP_MUX_PORT: 8181
       INCLUDE_PUBLIC_IP_IN_NAT_1_TO_1_IP: "yes"
@@ -23,7 +21,8 @@ services:
       NOTIFY_STREAM_KEYS: ${NOTIFY_STREAM_KEYS:-}
 
       # Social Stream Ninja chat forwarding
-      SSN_SESSION_ID: ${SSN_SESSION_ID}
+      SSN_SESSION_ID: ${SSN_SESSION_ID:-}
+      SSN_STREAM_KEYS: ${SSN_STREAM_KEYS:-}
       SSN_VERBOSE: ${SSN_VERBOSE:-false}
     volumes:
       # Stream profiles (stream key + bearer token) survive container rebuilds

@@ -26,6 +26,7 @@
 - [CLI Flags](#cli-flags)
 - [Stream Profile Policy](#stream-profile-policy)
 - [Stream Notifications](#stream-notifications)
+- [Social Stream Ninja](#social-stream-ninja)
 - [Webhooks](#webhooks)
 - [Network Test on Start](#network-test-on-start)
 - [Design](#design)
@@ -402,6 +403,18 @@ Slack or Mattermost) when a stream goes live, and update it when the stream ends
 | `NOTIFY_STREAM_KEYS`          | Optional comma separated list of stream keys to notify for. All streams are announced when unset.                                     |
 
 For Discord the original "live" message is edited to show the stream has ended, including its duration.
+
+## Social Stream Ninja
+
+Chat messages can be forwarded to [Social Stream Ninja](https://github.com/steveseguin/social_stream), so Broadcast Box
+chat shows up next to your other platforms. Messages are sent as `extContent` through the SSN API server, with the stream
+key as `sourceName`. Messages sent while the connection to SSN is down are queued and delivered on reconnect.
+
+| Variable          | Description                                                                                       |
+|-------------------|---------------------------------------------------------------------------------------------------|
+| `SSN_SESSION_ID`  | Your SSN session ID. Forwarding is disabled when unset.                                           |
+| `SSN_STREAM_KEYS` | Comma separated list of stream keys whose chat is forwarded. All chat is forwarded when unset.    |
+| `SSN_VERBOSE`     | Log every forwarded message.                                                                      |
 
 ## Webhooks
 

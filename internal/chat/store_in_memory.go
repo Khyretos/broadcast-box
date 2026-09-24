@@ -1,16 +1,11 @@
 package chat
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
-	"os"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 )
 
 type subscriber struct {
@@ -31,23 +26,8 @@ type InMemoryStore struct {
 	sessions   map[string]*Session
 	maxHistory int
 
-	// Social Stream Ninja forwarding (optional, disabled if SSN_SESSION_ID is unset)
-	ssnURL     string
-	ssnSession string
-	ssnActive  bool
-	ssnVerbose bool
-	ssnMu      sync.Mutex
-	ssnConn    *websocket.Conn
-}
-
-// envBool treats "1", "true", "yes", "on" (case-insensitive) as true.
-func envBool(key string) bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
-	switch v {
-	case "1", "true", "yes", "on":
-		return true
-	}
-	return false
+	// Social Stream Ninja forwarding, nil when disabled
+	ssn *ssnForwarder
 }
 
 func NewInMemoryStore(maxHistory int) *InMemoryStore {
@@ -61,103 +41,9 @@ func NewInMemoryStore(maxHistory int) *InMemoryStore {
 		maxHistory: maxHistory,
 	}
 
-	if session := strings.TrimSpace(os.Getenv("SSN_SESSION_ID")); session != "" {
-		// Root endpoint, matching what SSN's own Advanced Message Generator uses.
-		// The session is carried inside the payload via the "apiid" field.
-		s.ssnURL = fmt.Sprintf("wss://io.socialstream.ninja/join/%s/1/1", session)
-		s.ssnSession = session
-		s.ssnActive = true
-		s.ssnVerbose = envBool("SSN_VERBOSE")
-		go s.ssnWebSocketLoop()
-		log.Printf("SSN: forwarding enabled, target=%s session=%s verbose=%v",
-			s.ssnURL, s.ssnSession, s.ssnVerbose)
-	}
+	s.ssn = newSSNForwarder()
 
 	return s
-}
-
-// ssnWebSocketLoop maintains a persistent WebSocket connection to SSN.
-// Reconnects with a 30-second backoff if the connection drops.
-func (s *InMemoryStore) ssnWebSocketLoop() {
-	for {
-		if !s.ssnActive {
-			return
-		}
-
-		log.Printf("SSN: connecting to %s", s.ssnURL)
-		conn, _, err := websocket.DefaultDialer.Dial(s.ssnURL, nil)
-		if err != nil {
-			log.Printf("SSN: connection failed: %v — retrying in 30s", err)
-			time.Sleep(30 * time.Second)
-			continue
-		}
-
-		s.ssnMu.Lock()
-		s.ssnConn = conn
-		s.ssnMu.Unlock()
-
-		log.Println("SSN: connected")
-
-		// Read loop — SSN may send control messages. We just drain them.
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				if s.ssnVerbose {
-					log.Printf("SSN: read error: %v", err)
-				}
-				break
-			}
-		}
-
-		s.ssnMu.Lock()
-		s.ssnConn = nil
-		s.ssnMu.Unlock()
-
-		conn.Close()
-		if s.ssnVerbose {
-			log.Println("SSN: disconnected — reconnecting in 30s")
-		}
-		time.Sleep(30 * time.Second)
-	}
-}
-
-// sendToSSN pushes an extContent message to SSN. Non-blocking: if the
-// WebSocket isn't connected, the message is silently dropped.
-func (s *InMemoryStore) sendToSSN(streamKey, displayName, text string) {
-	s.ssnMu.Lock()
-	conn := s.ssnConn
-	s.ssnMu.Unlock()
-
-	if conn == nil {
-		if s.ssnVerbose {
-			log.Printf("SSN: drop (not connected) stream=%q user=%q text=%q", streamKey, displayName, text)
-		}
-		return
-	}
-
-	// Inner content — same shape the SSN Advanced Message Generator produces.
-	content := map[string]interface{}{
-		"chatname":    displayName,
-		"chatmessage": text,
-		"type":        "api",
-	}
-	contentJSON, _ := json.Marshal(content)
-
-	// Outer envelope — apiid carries the session ID, matching the generator.
-	payload := map[string]interface{}{
-		"action": "extContent",
-		"value":  string(contentJSON),
-	}
-	payloadJSON, _ := json.Marshal(payload)
-
-	if err := conn.WriteMessage(websocket.TextMessage, payloadJSON); err != nil {
-		log.Printf("SSN: write failed (stream=%q user=%q): %v", streamKey, displayName, err)
-		return
-	}
-
-	if s.ssnVerbose {
-		log.Printf("SSN: sent stream=%q user=%q text=%q", streamKey, displayName, text)
-	}
 }
 
 func (s *InMemoryStore) Connect(streamKey string, now time.Time) string {
@@ -355,8 +241,8 @@ func (s *InMemoryStore) sendToRoom(streamKey string, r *room, text string, displ
 	r.mu.Unlock()
 
 	// Forward to Social Stream Ninja, if configured.
-	if s.ssnActive {
-		s.sendToSSN(streamKey, displayName, text)
+	if s.ssn != nil {
+		s.ssn.forward(streamKey, displayName, text)
 	}
 }
 

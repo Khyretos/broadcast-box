@@ -36,6 +36,12 @@ const (
 	NotifyOfflineGracePeriod = "NOTIFY_OFFLINE_GRACE_PERIOD"
 	NotifyStreamKeys         = "NOTIFY_STREAM_KEYS"
 
+	// SOCIAL STREAM NINJA
+	SSNSessionID        = "SSN_SESSION_ID"
+	SSNStreamKeys       = "SSN_STREAM_KEYS"
+	SSNStreamKeysLegacy = "WATCH_STREAM_KEY"
+	SSNVerbose          = "SSN_VERBOSE"
+
 	// WEBRTC
 	IncludeLoopbackCandidate = "INCLUDE_LOOPBACK_CANDIDATE"
 	NetworkTypes             = "NETWORK_TYPES"
