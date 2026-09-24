@@ -9,10 +9,14 @@ import {
 } from "react";
 import {
 	ChatBubbleLeftRightIcon,
+	FaceSmileIcon,
 	HeartIcon,
 	PencilSquareIcon,
 	PaperAirplaneIcon,
 } from "@heroicons/react/24/outline";
+import { EmoteMap, useEmotes, Emote } from "../../../hooks/useEmotes";
+import EmojiPicker from "./EmojiPicker";
+import { REACTION_EMOJIS } from "../functions/reactions";
 import {
 	ChatAdapter,
 	ChatStatus,
@@ -23,7 +27,7 @@ import { LocaleContext } from "../../../providers/LocaleProvider";
 
 const noop = () => {};
 
-type ChatVariant = "sidebar" | "compact-below" | "below";
+type ChatVariant = "sidebar" | "fill" | "compact-below" | "below";
 
 interface ChatPanelProps {
 	streamKey: string;
@@ -31,7 +35,7 @@ interface ChatPanelProps {
 	isOpen: boolean;
 	adapter?: ChatAdapter;
 	displayName?: string;
-	onReaction?: () => void;
+	onReaction?: (emoji: string) => void;
 	onChangeDisplayNameRequested?: () => void;
 }
 
@@ -44,8 +48,33 @@ const getNameColor = (displayName: string) => {
 	return `hsl(${Math.abs(hash) % 360}, 70%, 60%)`;
 };
 
-const ChatMessage = memo(function ChatMessage(props: { message: Message }) {
-	const { message } = props;
+// Replaces words matching a 7TV/BTTV/FFZ emote code with the emote image
+const renderMessageText = (text: string, emotes: EmoteMap) => {
+	if (emotes.size === 0) {
+		return text;
+	}
+
+	return text.split(/(\s+)/).map((word, index) => {
+		const emote = emotes.get(word);
+		if (!emote) {
+			return word;
+		}
+		return (
+			<img
+				key={index}
+				src={emote.url}
+				srcSet={emote.url2x ? `${emote.url} 1x, ${emote.url2x} 2x` : undefined}
+				alt={emote.code}
+				title={emote.code}
+				loading="lazy"
+				className="-my-1 inline-block h-7 w-auto align-middle"
+			/>
+		);
+	});
+};
+
+const ChatMessage = memo(function ChatMessage(props: { message: Message; emotes: EmoteMap }) {
+	const { message, emotes } = props;
 	const timestamp = new Date(message.ts).toLocaleTimeString([], {
 		hour: "2-digit",
 		minute: "2-digit",
@@ -62,7 +91,7 @@ const ChatMessage = memo(function ChatMessage(props: { message: Message }) {
 				</span>
 				<span className="text-gray-400">{timestamp}</span>
 			</div>
-			<p className="mt-1 break-words text-sm text-gray-100">{message.text}</p>
+			<p className="mt-1 break-words text-sm text-gray-100">{renderMessageText(message.text, emotes)}</p>
 		</div>
 	);
 });
@@ -70,20 +99,48 @@ const ChatMessage = memo(function ChatMessage(props: { message: Message }) {
 interface ChatComposerProps {
 	status: ChatStatus;
 	isSending: boolean;
+	emotes: Emote[];
 	onNameRequested(): void;
-	onReaction?: () => void;
+	onReaction?: (emoji: string) => void;
 	onSend(text: string): Promise<boolean>;
 	locale: {
 		placeholder_input: string;
 		button_reaction_title: string;
 		button_change_display_name_title: string;
 		button_send_title: string;
+		button_emoji_title: string;
 	};
 }
 
 const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
-	const { status, isSending, onNameRequested, onReaction, onSend, locale } = props;
+	const { status, isSending, emotes, onNameRequested, onReaction, onSend, locale } = props;
 	const [text, setText] = useState("");
+	const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+	const [isReactionPickerOpen, setIsReactionPickerOpen] = useState(false);
+	const inputRef = useRef<HTMLInputElement>(null);
+	const composerRef = useRef<HTMLFormElement>(null);
+	const closeEmojiPicker = useCallback(() => setIsEmojiPickerOpen(false), []);
+
+	// Inserts at the cursor, with spaces around emote codes so they are recognised
+	const insertText = (value: string) => {
+		const input = inputRef.current;
+		const selectionStart = input?.selectionStart ?? text.length;
+		const selectionEnd = input?.selectionEnd ?? text.length;
+		const before = text.slice(0, selectionStart);
+		const after = text.slice(selectionEnd);
+		const isEmote = /^[\x21-\x7e]+$/.test(value);
+		const insert = isEmote
+			? `${before && !before.endsWith(" ") ? " " : ""}${value}${after.startsWith(" ") ? "" : " "}`
+			: value;
+		const next = (before + insert + after).slice(0, 2000);
+		setText(next);
+
+		requestAnimationFrame(() => {
+			input?.focus();
+			const caret = Math.min(before.length + insert.length, next.length);
+			input?.setSelectionRange(caret, caret);
+		});
+	};
 	const canSend =
 		text.trim().length > 0 && !isSending && status === "connected";
 
@@ -102,13 +159,39 @@ const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
 
 	return (
 		<form
+			ref={composerRef}
 			onSubmit={submit}
 			className="border-t border-gray-700 bg-gray-900/70 p-3"
 		>
-			<div className="flex items-center gap-2">
+			<div className="relative flex items-center gap-2">
+				{isEmojiPickerOpen && (
+					<EmojiPicker anchorRef={composerRef} emotes={emotes} onPick={insertText} onClose={closeEmojiPicker} />
+				)}
+
+				{isReactionPickerOpen && onReaction && (
+					<div
+						className="absolute bottom-full left-0 z-50 mb-2 flex flex-wrap gap-1 rounded-md border border-gray-700 bg-gray-900 p-1 shadow-xl"
+						onMouseLeave={() => setIsReactionPickerOpen(false)}
+					>
+						{REACTION_EMOJIS.map((emoji) => (
+							<button
+								type="button"
+								key={emoji}
+								onClick={() => onReaction(emoji)}
+								className="flex h-9 w-9 items-center justify-center rounded text-xl transition-transform hover:scale-125 hover:bg-gray-700"
+							>
+								{emoji}
+							</button>
+						))}
+					</div>
+				)}
+
 				<button
 					type="button"
-					onClick={onReaction}
+					onClick={() => {
+						setIsReactionPickerOpen((open) => !open);
+						setIsEmojiPickerOpen(false);
+					}}
 					disabled={!onReaction}
 					className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-700 bg-gray-800 text-rose-300 hover:bg-gray-700 disabled:cursor-not-allowed disabled:text-gray-600"
 					title={locale.button_reaction_title}
@@ -116,7 +199,20 @@ const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
 					<HeartIcon className="h-5 w-5" />
 				</button>
 
+				<button
+					type="button"
+					onClick={() => {
+						setIsEmojiPickerOpen((open) => !open);
+						setIsReactionPickerOpen(false);
+					}}
+					className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-700 hover:bg-gray-700 ${isEmojiPickerOpen ? "bg-gray-700 text-yellow-300" : "bg-gray-800 text-gray-100"}`}
+					title={locale.button_emoji_title}
+				>
+					<FaceSmileIcon className="h-5 w-5" />
+				</button>
+
 				<input
+					ref={inputRef}
 					type="text"
 					value={text}
 					maxLength={2000}
@@ -183,6 +279,7 @@ const getLocalizedStatus = (status: ChatStatus, locale: { status_connecting: str
 const ChatPanel = (props: ChatPanelProps) => {
 	const { streamKey, variant, isOpen, adapter, displayName, onReaction, onChangeDisplayNameRequested } = props;
 	const { locale } = useContext(LocaleContext);
+	const { list: emoteList, map: emoteMap } = useEmotes(streamKey);
 	const { messages, status, error, sendMessage } = useChatSession(
 		streamKey,
 		adapter,
@@ -244,7 +341,7 @@ const ChatPanel = (props: ChatPanelProps) => {
 			} catch (nextError) {
 				const message =
 					nextError instanceof Error
-						? nextError.message
+						? (nextError.message.includes("too fast") ? locale.chat.error_rate_limited : nextError.message)
 						: locale.chat.error_failed_to_send;
 				setSendError(message);
 				return false;
@@ -252,13 +349,15 @@ const ChatPanel = (props: ChatPanelProps) => {
 				setIsSending(false);
 			}
 		},
-		[displayName, sendMessage, onChangeDisplayNameRequested, locale.chat.error_failed_to_send, locale.chat.error_not_connected],
+		[displayName, sendMessage, onChangeDisplayNameRequested, locale.chat.error_failed_to_send, locale.chat.error_not_connected, locale.chat.error_rate_limited],
 	);
 
 	const base =
 		"flex flex-col overflow-hidden rounded-md border border-gray-700 bg-slate-900 text-gray-100 transition-[height,max-height,width,opacity,transform,border-color] duration-200 ease-out";
 	const belowHeightClass = variant === "compact-below" ? "h-80" : "h-96";
-	const panelClassName = variant === "sidebar"
+	const panelClassName = variant === "fill"
+		? `${base} ${isOpen ? "min-h-0 flex-1 opacity-100" : "hidden"}`
+		: variant === "sidebar"
 		? `${base} min-h-0 shrink-0 ${
 			isOpen
 				? "absolute top-0 right-0 h-full w-80 opacity-100"
@@ -307,7 +406,7 @@ const ChatPanel = (props: ChatPanelProps) => {
 
 				<div className="space-y-0">
 					{messages.map((message) => (
-						<ChatMessage key={message.id} message={message} />
+						<ChatMessage key={message.id} message={message} emotes={emoteMap} />
 					))}
 				</div>
 			</div>
@@ -315,6 +414,7 @@ const ChatPanel = (props: ChatPanelProps) => {
 			<ChatComposer
 				status={status}
 				isSending={isSending}
+				emotes={emoteList}
 				onNameRequested={onChangeDisplayNameRequested ?? noop}
 				onReaction={onReaction}
 				onSend={onSend}

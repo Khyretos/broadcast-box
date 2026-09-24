@@ -29,6 +29,8 @@ const (
 	ChatMaxHistory      = "CHAT_MAX_HISTORY"
 	ChatDefaultTTL      = "CHAT_DEFAULT_TTL"
 	ChatCleanupInterval = "CHAT_CLEANUP_INTERVAL"
+	ChatEmoteProviders  = "CHAT_EMOTE_PROVIDERS"
+	ChatEmotesTwitchIDs = "CHAT_EMOTES_TWITCH_IDS"
 
 	// NOTIFICATIONS
 	DiscordWebhookURL        = "DISCORD_WEBHOOK_URL"

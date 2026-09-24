@@ -9,6 +9,7 @@ import (
 	"github.com/glimesh/broadcast-box/internal/chat"
 	"github.com/glimesh/broadcast-box/internal/clips"
 	"github.com/glimesh/broadcast-box/internal/console"
+	"github.com/glimesh/broadcast-box/internal/emotes"
 	"github.com/glimesh/broadcast-box/internal/environment"
 	"github.com/glimesh/broadcast-box/internal/networktest"
 	"github.com/glimesh/broadcast-box/internal/notify"
@@ -36,6 +37,7 @@ func main() {
 
 	notify.Setup()
 	clips.Setup()
+	emotes.Setup()
 
 	chatManager := chat.NewManager()
 	webrtc.Setup(chatManager)

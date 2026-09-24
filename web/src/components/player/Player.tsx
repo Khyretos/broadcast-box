@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MouseEvent } from 'react';
 import PlayPauseComponent from "./components/PlayPauseComponent";
 import VideoLayerSelectorComponent from "./components/VideoLayerSelectorComponent";
@@ -7,8 +7,10 @@ import CurrentViewersComponent from "./components/CurrentViewersComponent";
 import { StreamStatus } from '../../providers/StatusProvider';
 import { CurrentLayersMessage, PeerConnectionDataChannels, PeerConnectionSetup, SetupPeerConnectionProps } from './functions/peerconnection';
 import { ChatAdapter } from '../../hooks/useChatSession';
-import { ArrowsPointingOutIcon, Square2StackIcon, HeartIcon, XMarkIcon } from '@heroicons/react/20/solid';
-import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
+import { ArrowsPointingOutIcon, Square2StackIcon, ScissorsIcon, XMarkIcon } from '@heroicons/react/20/solid';
+import { ChatBubbleLeftRightIcon, FilmIcon } from '@heroicons/react/24/outline';
+import { REACTION_EMOJIS, ReactionEmoji, ReactionsMessage } from './functions/reactions';
+import { LocaleContext } from '../../providers/LocaleProvider';
 import VolumeComponent from './components/VolumeComponent';
 import { StatusMessageComponent } from './components/StatusMessageComponent';
 
@@ -22,9 +24,16 @@ interface PlayerProps {
 	onReactionSenderChange?(streamKey: string, sender: ReactionSender | undefined): void;
 	onStreamStatusChange?(streamKey: string, status: StreamStatus): void;
 	onCloseStream?(): void;
+	isClipsOpen?: boolean;
+	onToggleClips?(): void;
+	onCreateClip?(): void;
 }
 
-export type ReactionSender = () => void;
+export type ReactionSender = (emoji: string) => void;
+
+// Cap on floating reactions, so a busy stream doesn't flood the player
+const MAX_REACTION_ANIMATIONS = 24;
+const MAX_ANIMATIONS_PER_EMOJI = 4;
 
 interface FullscreenElement extends HTMLElement {
 	webkitRequestFullscreen?: () => void | Promise<void>;
@@ -42,8 +51,12 @@ const Player = (props: PlayerProps) => {
 		onReactionSenderChange,
 		onStreamStatusChange,
 		onCloseStream,
+		isClipsOpen,
+		onToggleClips,
+		onCreateClip,
 	} = props
 	const streamKey = decodeURIComponent(props.streamKey).replace(/ /g, '_')
+	const { locale } = useContext(LocaleContext)
 
 	const [currentStreamStatus, setCurrentStreamStatus] = useState<StreamStatus>({
 		streamKey: streamKey,
@@ -61,7 +74,7 @@ const Player = (props: PlayerProps) => {
 	const [videoOverlayVisible, setVideoOverlayVisible] = useState<boolean>(false)
 	const [isVideoMuted, setIsVideoMuted] = useState<boolean>(true)
 	const [videoVolume, setVideoVolume] = useState<number>(50)
-	const [reactionAnimations, setReactionAnimations] = useState<{ id: number; x: number }[]>([])
+	const [reactionAnimations, setReactionAnimations] = useState<{ id: number; x: number; emoji: string; delay: number }[]>([])
 	const [dataChannels, setDataChannels] = useState<PeerConnectionDataChannels | undefined>()
 
 	const clickDelay = 250;
@@ -113,12 +126,27 @@ const Player = (props: PlayerProps) => {
 		},
 	}), [onStreamStatusChange, streamKey])
 
-	const addReactionAnimation = useCallback(() => {
-		const id = reactionAnimationIdRef.current + 1;
-		reactionAnimationIdRef.current = id;
-		const x = Math.round((Math.random() - 0.5) * 32);
+	const addReactionAnimations = useCallback((counts: Record<string, number>) => {
+		const added: { id: number; x: number; emoji: string; delay: number }[] = [];
+		for (const emoji of Object.keys(counts)) {
+			const count = counts[emoji];
+			if (!REACTION_EMOJIS.includes(emoji as ReactionEmoji)) {
+				continue;
+			}
+			for (let i = 0; i < Math.min(count, MAX_ANIMATIONS_PER_EMOJI); i++) {
+				reactionAnimationIdRef.current += 1;
+				added.push({
+					id: reactionAnimationIdRef.current,
+					x: Math.round((Math.random() - 0.5) * 40),
+					emoji,
+					delay: Math.round(Math.random() * 250),
+				});
+			}
+		}
 
-		setReactionAnimations((current) => [...current.slice(-7), { id, x }]);
+		if (added.length > 0) {
+			setReactionAnimations((current) => [...current, ...added].slice(-MAX_REACTION_ANIMATIONS));
+		}
 	}, []);
 
 	const handleEnterFullscreen = () => {
@@ -250,14 +278,14 @@ const Player = (props: PlayerProps) => {
 			return;
 		}
 
-		const sendReaction = () => {
+		// The server sends every reaction back to all viewers, the sender included
+		const sendReaction = (emoji: string) => {
 			if (channel.readyState !== "open") {
 				return;
 			}
 
 			try {
-				channel.send(JSON.stringify({ type: "reaction" }));
-				addReactionAnimation();
+				channel.send(JSON.stringify({ type: "reaction", emoji }));
 			} catch (error) {
 				console.log("ReactionDataChannel.Send.Error", error);
 			}
@@ -271,9 +299,9 @@ const Player = (props: PlayerProps) => {
 			}
 
 			try {
-				const payload = JSON.parse(event.data) as { type?: string };
-				if (payload.type === "reaction") {
-					addReactionAnimation();
+				const payload = JSON.parse(event.data) as { type?: string; counts?: ReactionsMessage["counts"] };
+				if (payload.type === "reactions" && payload.counts) {
+					addReactionAnimations(payload.counts);
 				}
 			} catch {
 				return;
@@ -293,7 +321,7 @@ const Player = (props: PlayerProps) => {
 			channel.removeEventListener("message", handleMessage);
 			onReactionSenderChange?.(streamKey, undefined);
 		};
-	}, [addReactionAnimation, dataChannels, onReactionSenderChange, streamKey]);
+	}, [addReactionAnimations, dataChannels, onReactionSenderChange, streamKey]);
 
 	return (
 		<div className={`w-full flex items-end ${fillContainer ? "h-full" : ""}`}>
@@ -361,6 +389,11 @@ const Player = (props: PlayerProps) => {
 								<span className="player-drag-cancel flex h-full items-center cursor-default">
 									<CurrentViewersComponent currentViewersCount={currentStreamStatus?.viewers ?? 0} />
 								</span>
+								{!!onCreateClip && currentStreamStatus.isOnline && (
+									<span className="player-drag-cancel flex h-full items-center cursor-pointer" title={locale.clips.button_create_title}>
+										<ScissorsIcon className="h-5 w-5" onClick={onCreateClip} />
+									</span>
+								)}
 								<span className="player-drag-cancel flex h-full items-center cursor-pointer">
 									<VideoLayerSelectorComponent layers={videoLayers} layerEndpoint={layerEndpoint} hasPacketLoss={false} currentLayer={currentLayersStatus?.videoLayerCurrent ?? ""} />
 								</span>
@@ -388,6 +421,20 @@ const Player = (props: PlayerProps) => {
 					<div
 						onDoubleClick={stopOverlayClickPropagation}
 						className="absolute top-2 right-2 flex flex-row gap-2 pointer-events-auto z-60">
+					{!!onToggleClips && (
+						<button
+							onClick={(e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								onToggleClips();
+							}}
+							title={locale.clips.button_toggle_title}
+							className={`p-2 rounded-full border ${isClipsOpen ? 'bg-purple-600 border-purple-500 text-white' : 'bg-black/60 border-gray-700 text-gray-200 hover:bg-gray-800'}`}
+						>
+							<FilmIcon className="h-5 w-5" />
+						</button>
+					)}
+
 					{!!onToggleChat && (
 						<button
 							onClick={(e) => {
@@ -441,12 +488,14 @@ const Player = (props: PlayerProps) => {
 
 					<div className="pointer-events-none absolute right-5 bottom-10 z-70 h-20 w-14 overflow-visible">
 						{reactionAnimations.map((reaction) => (
-							<HeartIcon
+							<span
 								key={reaction.id}
-								className="animate-reaction-float absolute right-0 bottom-0 h-7 w-7 text-rose-500 drop-shadow"
-								style={{ "--reaction-x": `${reaction.x}px` } as CSSProperties}
+								className="animate-reaction-float absolute right-0 bottom-0 text-2xl leading-none opacity-0 drop-shadow"
+								style={{ "--reaction-x": `${reaction.x}px`, animationDelay: `${reaction.delay}ms` } as CSSProperties}
 								onAnimationEnd={() => setReactionAnimations((current) => current.filter((item) => item.id !== reaction.id))}
-							/>
+							>
+								{reaction.emoji}
+							</span>
 						))}
 					</div>
 
