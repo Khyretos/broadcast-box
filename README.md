@@ -1,100 +1,142 @@
-# Broadcast Box
+<div align="center">
+
+# 📡 Broadcast Box
+
+**Sub-second live streaming in a box. Stream from OBS, watch in the browser, chat, clip and react together.**
 
 [![License][license-image]][license-url]
 [![Discord][discord-image]][discord-invite-url]
 
-- [What is Broadcast Box](#what-is-broadcast-box)
-- [Using](#using)
-  - [OBS Broadcasting](#obs-broadcasting)
-  - [Browser Publishing](#browser-publishing)
-  - [FFmpeg Broadcasting](#ffmpeg-broadcasting)
-  - [GStreamer Broadcasting](#gstreamer-broadcasting)
-  - [Playback](#playback)
-  - [Admin Portal](#admin-portal)
-  - [Statistics](#statistics)
-  - [Examples](#examples)
-- [Getting Started](#getting-started)
-  - [Configuring](#configuring)
-  - [Building From Source](#building-from-source)
-  - [Frontend](#frontend)
-  - [Backend](#backend)
-  - [Docker](#docker)
-  - [Docker Compose](#docker-compose)
-  - [Reverse proxies](#reverse-proxies)
-- [URL Parameters](#url-parameters)
-- [Environment Variables](#environment-variables)
-- [CLI Flags](#cli-flags)
-- [Stream Profile Policy](#stream-profile-policy)
-- [Stream Notifications](#stream-notifications)
-- [Clips](#clips)
-- [Chat Emotes and Reactions](#chat-emotes-and-reactions)
-- [Social Stream Ninja](#social-stream-ninja)
-- [Webhooks](#webhooks)
-- [Network Test on Start](#network-test-on-start)
-- [Design](#design)
+</div>
 
-## What is Broadcast Box
+Broadcast Box lets you broadcast or screen-share to friends with sub-second latency. It uses WebRTC
+([WHIP](https://obsproject.com/kb/whip-streaming-guide) to publish, WHEP to watch), so there is no transcoding and no
+waiting: what you stream is what your viewers see, a fraction of a second later. It was designed to be simple to use and
+easy to modify.
 
-Broadcast Box lets you broadcast/screen-share to friends in sub-second time. It was designed
-to be simple to use and easily modifiable. Broadcast Box uses WebRTC, to learn more see
-the OBS [WHIP Streaming Guide](https://obsproject.com/kb/whip-streaming-guide)
+This fork adds a full community layer on top: live chat with emotes and GIFs, reactions, clips, Discord notifications
+and Social Stream Ninja integration.
 
-Want to contribute to the development of Broadcast Box? See [Contributing](./CONTRIBUTING.md).
+---
 
-## Using
+## ✨ Features
 
-A public instance of Broadcast Box is hosted at [b.siobud.com](https://b.siobud.com). Feel free to use this as
-much as you want. Go to [Getting Started](#getting-started) for instructions on running it locally.
+| | Feature | What it does |
+|---|---|---|
+| ⚡ | **Sub-second streaming** | WebRTC from OBS, FFmpeg, GStreamer or the browser, with simulcast and multi-view playback |
+| 📊 | **Quality selector** | Every quality layer shows its detected resolution, frame rate and bitrate, e.g. `1080p @ 120fps, 12 Mb/s` |
+| 💬 | **Live chat** | Per-stream chat with display names, built into the player |
+| 😀 | **Emoji picker** | Every Unicode emoji, searchable, with each viewer's 50 most used ones first |
+| 🐸 | **Emotes** | Twitch, 7TV, BetterTTV and FrankerFaceZ emotes, plus a live search of all of 7TV, BTTV and FFZ |
+| 🎞️ | **GIFs** | Search your own [Slink](https://github.com/andrii-kryvoviaz/slink) servers, GIPHY and KLIPY, or paste a link |
+| ❤️ | **Reactions** | Click to react, hold to pick any emoji or emote; scales to hundreds of viewers |
+| ✂️ | **Clips** | Viewers clip the last minutes of a stream, trim it in an editor and publish it, stored locally or on S3 |
+| 🔔 | **Notifications** | "Stream is live" / "Stream ended" messages on Discord, Slack, Mattermost, n8n and more |
+| 🥷 | **Social Stream Ninja** | Forward chat to [Social Stream Ninja](https://github.com/steveseguin/social_stream) next to your other platforms |
+| 🔐 | **Access control** | Reserved stream keys with tokens, an admin portal, and webhooks for your own authorization |
+| 📈 | **Built to scale** | Every viewer has their own send queue, so one slow viewer never stalls the stream for the others |
+| 🌍 | **Languages** | English and Danish |
 
-### OBS Broadcasting
+---
 
-To use Broadcast Box with OBS you must set your output to WebRTC and set a proper URL + Stream Key.
-You may use any Stream Key you like. The same stream key is used for broadcasting and playback.
+## 📑 Table of Contents
 
-Go to `Settings -> Stream` and set the following values.
+- [🚀 Quick Start](#-quick-start)
+- [🎥 Going Live](#-going-live)
+  - [OBS](#obs) · [Browser](#browser) · [FFmpeg](#ffmpeg) · [GStreamer](#gstreamer)
+- [👀 Watching](#-watching)
+- [💬 Chat](#-chat)
+  - [Emojis](#-emojis) · [Emotes](#-emotes) · [GIFs](#️-gifs) · [Reactions](#️-reactions)
+- [✂️ Clips](#️-clips)
+- [🔔 Stream Notifications](#-stream-notifications)
+- [🥷 Social Stream Ninja](#-social-stream-ninja)
+- [🔐 Access Control](#-access-control)
+- [📈 Performance and Scaling](#-performance-and-scaling)
+- [🛠️ Building From Source](#️-building-from-source)
+- [🐳 Docker](#-docker)
+- [⚙️ Configuration Reference](#️-configuration-reference)
+- [🧪 Network Test on Start](#-network-test-on-start)
+- [🧩 API Reference](#-api-reference)
+- [🤝 Contributing](#-contributing)
 
-- Service: WHIP
-- Server: <https://b.siobud.com/api/whip>
-- StreamKey: (Any Stream Key you like)
+---
 
-Your settings page should look like this:
+## 🚀 Quick Start
+
+The quickest way to run Broadcast Box is Docker Compose:
+
+```shell
+git clone https://github.com/Khyretos/broadcast-box.git
+cd broadcast-box
+cp .env.example .env      # then fill in the settings you want
+docker compose up -d --build
+```
+
+The included [docker-compose.yml](./docker-compose.yml) expects:
+
+- 🌐 **A reverse proxy** (nginx, Caddy, Traefik, ...) on a Docker network called `nginx-reverse-proxy_default`, which
+  forwards your domain to `broadcast-box:8080`. Change the network name at the bottom of the file to match yours.
+- 📶 **UDP port `8181`** open in your firewall. All WebRTC video goes through it.
+- 📝 **`IP_ADDRESS`** in `.env` set to your server's public IP.
+
+Everything else is optional. Each feature below lists the settings it needs, and
+[.env.example](./.env.example) has all of them with examples.
+
+> 💡 Just want to try it? Run `go run .` and open <http://localhost:8080>. See [Building From Source](#️-building-from-source).
+
+---
+
+## 🎥 Going Live
+
+You can use any stream key you like. The same key is used for broadcasting and for watching: stream to `MyStream` and
+it plays at `https://your-server.com/MyStream`. To stop others from using your key, [reserve it](#-access-control).
+
+### OBS
+
+Go to `Settings → Stream` and set:
+
+| Setting | Value |
+|---|---|
+| Service | `WHIP` |
+| Server | `https://your-server.com/api/whip` |
+| Bearer Token | Your stream key (or your profile token if the key is [reserved](#-access-control)) |
 
 ![OBS Stream settings example](./.github/img/streamSettings.png)
 
-OBS by default will have ~2 seconds of latency. If you want sub-second latency you can configure
-this in `Settings -> Output`. Set your encoder to `x264` and set tune to `zerolatency`. Your Output
-page will look like this.
+OBS has about 2 seconds of latency by default. For sub-second latency go to `Settings → Output`, pick `x264` as encoder
+and set tune to `zerolatency`:
 
 ![OBS Output settings example](./.github/img/outputPage.png)
 
-When you are ready to broadcast press `Start Streaming` and now time to watch!
+Press `Start Streaming` and you're live! 🎉
 
-### Browser Publishing
+> 💡 **Simulcast:** when OBS sends multiple quality layers, viewers can pick one in the player. Broadcast Box detects
+> the resolution, frame rate and bitrate of each layer and shows them in the quality selector.
 
-Open `/publish/<streamKey>` (for example <https://b.siobud.com/publish/StreamTest>) to publish directly from the browser.
-Broadcast Box can capture either your screen or webcam and uses the same stream key for playback.
+### Browser
 
-If the supplied bearer token belongs to a reserved profile, the page also exposes profile settings so you can update
-the stream MOTD and toggle public/private visibility without leaving the publish flow.
+Open `/publish/<streamKey>` to go live straight from the browser, with your screen or webcam. If your bearer token
+belongs to a reserved profile, the page also lets you change the stream's message of the day and switch it between
+public and private.
 
-### FFmpeg Broadcasting
+### FFmpeg
 
-The following simple example broadcasts `video-test.mp4` to https://b.siobud.com with a Bearer Token of `ffmpeg-test`
+Broadcast `video-test.mp4` with the bearer token `ffmpeg-test`:
 
 ```shell
-ffmpeg -re -i video-test.mp4 -bf 0 -f whip -authorization ffmpeg-test https://b.siobud.com/api/whip
+ffmpeg -re -i video-test.mp4 -bf 0 -f whip -authorization ffmpeg-test https://your-server.com/api/whip
 ```
 
-For now, FFmpeg WHIP only supports H.264 (`libx264`) and Opus and will use them by default if the `-vcodec` and `-acodec`
-options are omitted. However, you can use any H.264 encoder, such as:
+FFmpeg's WHIP output supports H.264 and Opus, and uses them by default. Any H.264 encoder works, for example with
+hardware encoding:
 
 ```shell
 ffmpeg -hwaccel vulkan -re -i video-test.mp4 -bf 0 -vcodec h264_vaapi \
   -vf 'format=nv12|vulkan,hwupload' -init_hw_device vulkan \
-  -f whip -authorization ffmpeg-test https://b.siobud.com/api/whip
+  -f whip -authorization ffmpeg-test https://your-server.com/api/whip
 ```
 
-The following complex example broadcasts a test feed to https://b.siobud.com with a Bearer Token of `ffmpeg-test`
+Or broadcast a test pattern with a tone:
 
 ```shell
 ffmpeg \
@@ -104,447 +146,553 @@ ffmpeg \
   -pix_fmt yuv420p -vcodec libx264 -profile:v baseline -r 25 -g 50 \
   -acodec libopus -ar 48000 -ac 2 \
   -f whip -authorization "ffmpeg-test" \
-  "https://b.siobud.com/api/whip"
+  "https://your-server.com/api/whip"
 ```
 
-> Note that WHIP support and libx264 are required for this example. WHIP was added in version 8 of FFmpeg.
+> ℹ️ WHIP was added in FFmpeg 8.
 
-### GStreamer Broadcasting
+### GStreamer
 
-See the example script [here](examples/gstreamer-broadcast.sh).
-
-Can broadcast gstreamer's test sources, or pulsesrc+v4l2src
-
-Expects `gstreamer-1.0`, with `good,bad,ugly` plugins and `gst-plugins-rs`
-
-Use of example scripts:
+See [examples/gstreamer-broadcast.sh](examples/gstreamer-broadcast.sh). It can broadcast GStreamer's test sources or
+a webcam and microphone (`v4l2src` + `pulsesrc`), and needs `gstreamer-1.0` with the `good`, `bad` and `ugly` plugins
+and `gst-plugins-rs`.
 
 ```shell
-# testsrcs
+# Test sources
 ./examples/gstreamer-broadcast.sh http://localhost:8080/api/whip testStream1
-# v4l2src
+# Webcam
 ./examples/gstreamer-broadcast.sh http://localhost:8080/api/whip testStream1 v4l2
 ```
 
-### Playback
+---
 
-If you are broadcasting to the Stream Key `StreamTest` your video will be available at <https://b.siobud.com/StreamTest>.
+## 👀 Watching
 
-The player page also supports multi-view playback. Use the `Add Stream` button in the footer to add more active streams
-to the same page, and use `?cinemaMode=true` to open the player in a chrome-free layout.
+Open `https://your-server.com/<streamKey>`, or enter the stream key on the home page.
 
-You can also go to the home page and enter `StreamTest`. The following is a screenshot of OBS broadcasting and
-the latency of 120 milliseconds observed.
+![Example of the player with 120 ms latency](./.github/img/broadcastView.png)
 
-![Example have potential latency](./.github/img/broadcastView.png)
-
-### Admin Portal
-
-When `FRONTEND_ADMIN_TOKEN` is set Broadcast Box provides an Admin Portal at `/admin`. The same token is used to log in.
-
-The current Admin Portal exposes:
-
-- `Status` to inspect active publishers/subscribers and metadata
-- `Profiles` to create stream profiles, rotate tokens, and remove profiles
-- `Logging` to read the current server log file
-
-Stream Profiles let you reserve a stream key, so only authorized users can stream to that key.
-
-![Admin Portal](./.github/img/adminPortal.png)
-
-### Statistics
-
-Viewable at `/statistics`, this page shows stream uptime, track metrics, and WHEP session details.
-
-This page relies on `/api/status`, so disabling the status API disables statistics.
+- 🖼️ **Multi-view:** use `Add Stream` below the player to watch several streams side by side.
+- 🎬 **Cinema mode:** hides everything but the video. Toggle it below the player, or open `?cinemaMode=true`.
+- 📊 **Quality selector:** each layer is labeled with what it really is, e.g. `0 - 1080p @ 120fps, 12 Mb/s`.
+- 👥 **Viewer count:** shown in the player controls.
+- 📈 **Statistics:** `/statistics` shows uptime, track metrics and WHEP session details of every public stream.
 
 ![Statistics](./.github/img/statistics.png)
 
-### Examples
+---
 
-The repository includes a few small examples and integration helpers:
+## 💬 Chat
 
-- [examples/simple-watcher.html](./examples/simple-watcher.html) - minimal WHEP viewer with no framework dependencies
-- [examples/dynamic-watcher.html](./examples/dynamic-watcher.html) - polls `/api/status` and opens viewers for all active streams
-- [examples/gstreamer-broadcast.sh](./examples/gstreamer-broadcast.sh) - publishes a stream with GStreamer
-- [examples/gstreamer-whep-to-rtmp.sh](./examples/gstreamer-whep-to-rtmp.sh) - subscribes over WHEP and republishes to RTMP with GStreamer
-- [examples/webhook-server/main.go](./examples/webhook-server/main.go) - simple webhook authorization server
-- [examples/recording/main.go](./examples/recording/main.go) - webhook-driven recorder that writes `.ogg` and `.h264` files
+Every stream has its own live chat next to the player. Viewers pick a display name the first time they chat,
+and every name gets its own color.
+Messages travel over the same WebRTC connection as the video (a data channel), so chat is as fast as the stream.
 
-## Getting Started
+The smiley button opens the **media picker** with three tabs: **Emoji**, **Emotes** and **GIFs**. Each tab has a
+search box and remembers the 50 items each viewer uses most, in their own browser.
 
-Broadcast Box is made up of two parts. The server is written in Go and is in charge of ingesting and broadcasting WebRTC. The frontend is in react and connects to the Go backend. The Go server can be used to serve the HTML/CSS/JS directly. Use the following instructions to build from source or utilize [Docker](#docker) / [Docker Compose](#docker-compose).
+> 🔌 Building your own client? The chat protocol is documented in [CONNECTING.md](internal/chat/CONNECTING.md).
 
-### Configuring
+### 😀 Emojis
 
-The backend loads [.env.production](./.env.production) by default. Set `APP_ENV=development` to load
-[.env.development](./.env.development) instead.
+The emoji tab has every Unicode emoji, grouped by category and searchable by name and keyword ("fire", "party",
+"thumbs"). The emoji data is only downloaded the first time a viewer opens the picker, so it doesn't slow down the page.
 
-If you only want the backend API or CLI helpers without serving the built frontend, set `DISABLE_FRONTEND=TRUE`.
+### 🐸 Emotes
 
-### Building From Source
+Chat shows emotes from **7TV**, **BetterTTV**, **FrankerFaceZ** and **Twitch**. Typing an emote's name in a message
+(e.g. `KEKW`) shows it as an image.
 
-#### Frontend
+- 🌐 **Global emotes** of each provider are always available.
+- 📺 **Channel emotes:** set `CHAT_EMOTES_TWITCH_IDS` to a Twitch user ID to add that channel's 7TV, BTTV and FFZ
+  emotes, and its Twitch subscriber emotes when Twitch is set up. Use one ID for all streams (`12345678`) or one per
+  stream key (`mystream:12345678,otherstream:87654321`). This is the numeric user ID, not the channel name.
+- 🔎 **Emote search:** the Emotes tab searches all of 7TV, BTTV and FFZ as you type, with fuzzy matching, so
+  `pepe` finds `PepeLaugh`, `pepeD` and friends. An emote picked from a search is sent along with the message, so
+  every viewer sees it, even if it isn't one of the channel's emotes.
+- ⏱️ Emote lists are cached on the server for 30 minutes, so viewers never hit the emote providers directly.
 
-React dependencies are installed by running `npm install` in the `web` directory.
+**Twitch emotes** (like `Kappa` and a channel's subscriber emotes) need a free Twitch application:
 
-- `npm run build` builds production assets into `web/build`
-- `npm start` runs the Vite dev server and proxies `/api` to the backend
-- `npm run host` runs the same Vite dev server on your local network
+1. Go to [dev.twitch.tv/console](https://dev.twitch.tv/console) and register an application. Any OAuth redirect URL
+   works, e.g. `http://localhost`.
+2. Set `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET` to its client ID and a new secret.
 
-If everything is successful, you should see output similar to:
-
-```console
-> broadcast-box@0.1.0 build
-> vite build
-
-[dotenv@17.2.3] injecting env (0) from ../.env.development,../.env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
-Target Backend: http://localhost:8080
-vite v6.4.1 building for production...
-✓ 724 modules transformed.
-build/index.html                       0.84 kB │ gzip:  0.49 kB
-build/assets/index-BZVYZNKC.css       20.37 kB │ gzip:  4.82 kB
-build/assets/index-BeQC1JnS.js         1.43 kB │ gzip:  0.69 kB
-build/assets/components-BcOZaJ_1.js   63.11 kB │ gzip: 16.08 kB
-build/assets/node-DpLsG32O.js        239.39 kB │ gzip: 75.76 kB
-✓ built in 601ms
+```env
+CHAT_EMOTE_PROVIDERS=7tv,bttv,ffz
+CHAT_EMOTES_TWITCH_IDS=12345678
+TWITCH_CLIENT_ID=your-client-id
+TWITCH_CLIENT_SECRET=your-client-secret
 ```
 
-#### Backend
+### 🎞️ GIFs
 
-Go dependencies are automatically installed.
+The GIFs tab lets viewers search for GIFs and send them into chat with one click. There are three GIF sources, and
+any combination works:
 
-To run the Go server, run `go run .` in the root of this project, you should see the following:
+| Source | Needs | When it's searched |
+|---|---|---|
+| 🏠 **[Slink](https://github.com/andrii-kryvoviaz/slink)**, your own image server | `SLINK_INSTANCES` | While typing. With an empty search it shows the newest images |
+| 🟪 **GIPHY** | `GIPHY_API_KEY` | When the viewer presses **Enter** |
+| 🟦 **KLIPY** | `KLIPY_API_KEY` | When the viewer presses **Enter** |
+
+#### 🏠 Slink: your own GIF library
+
+[Slink](https://github.com/andrii-kryvoviaz/slink) is a self-hosted image sharing server. List one or more of your
+Slink servers and their public images show up in the GIF tab:
+
+```env
+SLINK_INSTANCES=gifs.example.com,https://memes.example.org
+```
+
+- 🔑 **No API key needed.** The search uses Slink's public image list. Slink's API keys are only for uploading, so a
+  key added as `host:sk_...` is ignored (the server logs a warning).
+- 🔓 **Guest access:** set `USER_ALLOW_UNAUTHENTICATED_ACCESS=true` on each Slink server, and make the images public.
+  Private images are never shown.
+- 📝 **Add descriptions:** Slink searches image descriptions and uploader names, not file names. A GIF described as
+  "cat dance" is found by searching `cat`.
+- ✅ Your Slink servers are allowed in chat automatically.
+
+#### 🟪 GIPHY and 🟦 KLIPY
+
+Get a free API key from [developers.giphy.com](https://developers.giphy.com/dashboard/) and/or
+[partner.klipy.com](https://partner.klipy.com/api-keys), and paste it in:
+
+```env
+GIPHY_API_KEY=your-giphy-key
+KLIPY_API_KEY=your-klipy-key
+```
+
+These services only allow a limited number of requests per hour (a free GIPHY key allows 100), so Broadcast Box uses
+them sparingly:
+
+- ⏎ Typing only searches your Slink servers. The picker shows *"Press Enter to also search GIPHY & KLIPY"*, and only
+  pressing Enter asks them.
+- 🗄️ Their results are cached on the server for an hour, and shared by all viewers.
+- 🧮 The server makes at most `GIPHY_HOURLY_LIMIT` (default `90`) GIPHY searches and `KLIPY_HOURLY_LIMIT` (default
+  `100`) KLIPY searches per hour. When a limit is reached, viewers see a short notice and still get the other results.
+- 🔒 API keys stay on the server, viewers never see them.
+- 🔞 `GIF_CONTENT_RATING` (`g`, `pg`, `pg-13` or `r`, default `pg-13`) sets how explicit results may be.
+- ✅ GIPHY's hosts (`*.giphy.com`) and KLIPY's (`static.klipy.com`) are allowed in chat automatically.
+
+#### 🔗 Pasting GIF links
+
+Below the search results is a **Paste a GIF link** box. It accepts:
+
+- 🖼️ A direct link to a GIF, from an allowed host (see below).
+- 📄 A link to a GIF's **web page** on KLIPY (`https://klipy.com/gifs/cat-blink-9`) or GIPHY
+  (`https://giphy.com/gifs/cat-dance-abc123`). The server finds the GIF file behind the page for you. A page link
+  pasted in the search box works too.
+
+#### ✅ Allowed GIF hosts
+
+Only GIFs from trusted hosts are shown as images, so viewers can't post images from anywhere on the internet.
+Your Slink servers, GIPHY and KLIPY are allowed automatically. Add other sites with `CHAT_GIF_HOSTS`:
+
+```env
+# One site, and a domain with all its subdomains
+CHAT_GIF_HOSTS=gifs.example.com,*.imgur.com
+```
+
+`*.example.com` allows `example.com` and all its subdomains, `*` allows any https site. Links from other hosts are sent
+as plain links.
+
+### ❤️ Reactions
+
+The heart button next to the chat box sends reactions that float over the video for everyone:
+
+- 👆 **Click** to send the selected reaction.
+- ✋ **Hold** to open a picker and choose any emoji or emote as your reaction.
+
+The server counts reactions and sends the totals to all viewers four times per second, instead of forwarding every
+single click, so reactions stay smooth with hundreds of viewers.
+
+---
+
+## ✂️ Clips
+
+Viewers can clip the last minutes of a live stream, like on Twitch:
+
+1. ✂️ Press the **scissors** button in the player. This saves a copy of the recent part of the stream.
+2. 🎚️ In the editor, pick where the clip starts and ends, and give it a title (the date and time if left empty).
+3. 📤 Press **Publish clip**.
+
+Published clips are listed in the **clips panel**, opened with the film button next to the chat button. From there
+they can be watched and downloaded. Deleting a clip needs the admin token or the token of the stream's profile.
+
+Enable clips by choosing where to store them, a folder or S3-compatible storage (AWS S3, MinIO, Backblaze B2,
+Cloudflare R2, ...):
+
+```env
+# A folder...
+CLIP_STORAGE_PATH=/clips
+
+# ...or S3
+CLIP_S3_ENDPOINT=https://s3.eu-central-1.amazonaws.com
+CLIP_S3_BUCKET=my-clips
+CLIP_S3_ACCESS_KEY=...
+CLIP_S3_SECRET_KEY=...
+CLIP_S3_REGION=eu-central-1
+```
+
+How it works:
+
+- 🧠 Each live stream keeps a rolling buffer of its best quality layer and its audio in memory, `CLIP_BUFFER_DURATION`
+  long (default 2 minutes). That's about 90 MB per minute at 12 Mb/s.
+- 🎬 Clips start at the keyframe at or just before the chosen start, so they always play from the first frame.
+- 📦 Clips are saved as Matroska (`<streamKey>/<id>.mkv`) with a small `<id>.json` holding the title and details.
+  The video is not re-encoded, so a clip has the full stream quality.
+- 🎞️ Supported for H.264, AV1, VP8 and VP9 video with Opus audio.
+- ⏳ Drafts in the editor expire after 10 minutes if they're not published.
+
+> ⚠️ Clip previews play in Chromium-based browsers (Chrome, Edge, Brave, Opera). Firefox and Safari have limited
+> Matroska support; viewers there can still create and download clips.
+
+---
+
+## 🔔 Stream Notifications
+
+Broadcast Box can announce your streams in Discord (or Slack, Mattermost, n8n, ... anything that accepts a JSON
+`content`, `text` or `message` field):
+
+- 🔴 **Stream is Live:** posted when a stream starts, with a link to watch it.
+- ⚫ **Stream Ended:** on Discord, the live message is edited to show the stream has ended and how long it lasted.
+  Other services get a new message.
+- 🔁 **No spam on reconnects:** a stream is only announced as ended after it has been offline for
+  `NOTIFY_OFFLINE_GRACE_PERIOD` (default `60s`). If OBS reconnects within that time, the original message stays.
+
+```env
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+PUBLIC_URL=https://stream.example.com       # used for the "watch" link
+NOTIFY_STREAM_KEYS=mystream                 # optional, all streams when empty
+```
+
+To get a Discord webhook URL: open your channel's settings → **Integrations** → **Webhooks** → **New Webhook** →
+**Copy Webhook URL**.
+
+---
+
+## 🥷 Social Stream Ninja
+
+Forward your Broadcast Box chat to [Social Stream Ninja](https://github.com/steveseguin/social_stream), so it shows
+up in one place with your Twitch, YouTube and other chats:
+
+```env
+SSN_SESSION_ID=your-session-id
+SSN_STREAM_KEYS=mystream        # optional, all chat is forwarded when empty
+```
+
+Messages are sent through the SSN API server with the stream key as source name. When the connection to SSN drops,
+messages are queued and delivered when it's back. Set `SSN_VERBOSE=true` to log every forwarded message.
+
+---
+
+## 🔐 Access Control
+
+By default anyone can stream to any stream key. Broadcast Box has three ways to control that.
+
+### 🎟️ Stream profiles
+
+A stream profile **reserves** a stream key: only someone with the profile's token can stream to it. Profiles also
+hold the stream's message of the day and whether it's public (listed on the home page and in `/api/status`) or
+private.
+
+Create a profile in the admin portal, or from the command line:
+
+```shell
+go run . -createNewProfile -streamKey MyStream
+```
+
+This prints the token to use as bearer token in OBS. Profiles are stored in `STREAM_PROFILE_PATH`.
+
+`STREAM_PROFILE_POLICY` decides who may stream:
+
+| Value | Who can stream |
+|---|---|
+| `ANYONE_WITH_RESERVED` *(default)* | Reserved keys need their token. Keys that aren't reserved are open to anyone. |
+| `RESERVED` | Only reserved keys, with their token. The most restrictive mode. |
+
+### 🛡️ Admin portal
+
+Set `FRONTEND_ADMIN_TOKEN` to enable the admin portal at `/admin`, logging in with that token. It shows:
+
+- 📋 **Status:** all publishers and viewers, including private streams.
+- 🎟️ **Profiles:** create profiles, rotate their tokens, remove them.
+- 📜 **Logging:** the current server log.
+
+![Admin Portal](./.github/img/adminPortal.png)
+
+### 🪝 Webhooks
+
+For your own authorization logic, set `WEBHOOK_URL`. Broadcast Box then calls it for every broadcaster and viewer
+that connects, with this JSON:
+
+| Field | Description |
+|---|---|
+| `action` | `whip-connect` for broadcasters, `whep-connect` for viewers |
+| `bearerToken` | The token they connected with |
+| `queryParams` | Query parameters of the request |
+| `ip` | Their IP address |
+| `userAgent` | Their user agent |
+
+Reply `200 OK` with `{ "streamKey": "TheStreamKey" }` to allow the connection. Any other status rejects it. This lets
+you use different keys for streaming and watching, log who connects, and more.
+
+- [examples/webhook-server/main.go](examples/webhook-server/main.go) only allows the stream `broadcastBoxRulez`.
+- [broadcastbox-webhookserver](https://github.com/chrisingenhaag/broadcastbox-webhookserver) separates the streaming
+  key from the watching key.
+
+---
+
+## 📈 Performance and Scaling
+
+Broadcast Box forwards the video as-is and never re-encodes it, so one server can serve many viewers. It's built to
+keep the stream smooth for everyone:
+
+- 🚦 **A send queue per viewer:** a viewer with a slow connection only delays themselves, never the broadcaster or
+  the other viewers.
+- 🧮 **Chat and reactions are rate-limited and batched**, so busy chats don't flood viewers.
+- 👥 **Viewer cap:** `MAX_VIEWERS_PER_STREAM` limits viewers per stream to protect your upload bandwidth. Viewers over
+  the limit get an error instead of a stuttering stream for everyone.
+
+💡 **Tips for high bitrates** (4K, high frame rates, 10+ Mb/s):
+
+- 📶 **Upload bandwidth** is the real limit: each viewer receives the full stream. 20 viewers of a 12 Mb/s stream need
+  240 Mb/s upload. Simulcast lets viewers on slower connections pick a lower layer.
+- 🧺 **UDP receive buffer:** bursts of large keyframes can overflow the UDP buffer, which shows as stutter.
+  Broadcast Box asks for an 8 MiB buffer (`UDP_MUX_READ_BUFFER_SIZE`), but Linux caps it at `net.core.rmem_max`. Raise
+  the cap on the host (not inside the container):
+
+  ```shell
+  sudo sysctl -w net.core.rmem_max=8388608
+  echo 'net.core.rmem_max=8388608' | sudo tee /etc/sysctl.d/99-broadcast-box.conf   # keep it after reboots
+  ```
+
+---
+
+## 🛠️ Building From Source
+
+Broadcast Box has two parts: a **Go server** that handles WebRTC and the API, and a **React frontend** that the Go
+server serves.
+
+### Frontend
+
+```shell
+cd web
+npm install
+npm run build     # builds into web/build
+```
+
+- `npm start` runs the Vite dev server and proxies `/api` to the backend.
+- `npm run host` does the same, reachable on your local network.
+
+### Backend
+
+```shell
+go run .
+```
 
 ```console
 2026/02/24 12:00:00 Environment: Loading `.env.production`
 2026/02/24 12:00:00 Starting HTTP server at :8080
 ```
 
-To use Broadcast Box navigate to: `http://<YOUR_IP>:8080`. In your broadcast tool of choice, you will broadcast to `http://<YOUR_IP>:8080/api/whip`.
+Open `http://<YOUR_IP>:8080`, and broadcast to `http://<YOUR_IP>:8080/api/whip`.
 
-### Docker
+The server loads [.env.production](./.env.production) by default, or [.env.development](./.env.development) with
+`APP_ENV=development`. Set `DISABLE_FRONTEND=TRUE` to run only the API.
 
-A Docker image is also provided to make it easier to run locally and in production. The arguments you run the Dockerfile with depending on
-if you are using it locally or a server.
+---
 
-If you want to run locally execute `docker run -e UDP_MUX_PORT=8080 -e NAT_1_TO_1_IP=127.0.0.1 -p 8080:8080 -p 8080:8080/udp seaduboi/broadcast-box`.
-This will make broadcast-box available on `http://localhost:8080`. The UDPMux is needed because Docker on macOS/Windows runs inside a NAT.
+## 🐳 Docker
 
-If you are running on AWS (or other cloud providers) execute. `docker run --net=host -e INCLUDE_PUBLIC_IP_IN_NAT_1_TO_1_IP=yes seaduboi/broadcast-box`
-broadcast-box needs to be run in net=host mode. broadcast-box listens on random UDP ports to establish sessions.
+**Locally** (the UDP mux is needed because Docker on macOS and Windows runs behind a NAT):
 
-### Docker Compose
-
-A Docker Compose is included that uses LetsEncrypt for automated HTTPS. It also includes Watchtower so your instance of Broadcast Box
-will be automatically updated every night. If you are running on a VPS/Cloud server this is the quickest/easiest way to get started.
-
-```console
-export URL=my-server.com
-docker-compose up -d
+```shell
+docker run -e UDP_MUX_PORT=8080 -e NAT_1_TO_1_IP=127.0.0.1 -p 8080:8080 -p 8080:8080/udp seaduboi/broadcast-box
 ```
+
+Then open <http://localhost:8080>.
+
+**On a cloud server** (AWS and others), use host networking, as Broadcast Box listens on random UDP ports:
+
+```shell
+docker run --net=host -e INCLUDE_PUBLIC_IP_IN_NAT_1_TO_1_IP=yes seaduboi/broadcast-box
+```
+
+**With Docker Compose**, see [Quick Start](#-quick-start). The compose file keeps stream profiles in `./profiles` and
+clips in `./clips` (or `CLIP_DIRECTORY`), so they survive rebuilds.
+
+> ℹ️ The `seaduboi/broadcast-box` image is the upstream project. For the features of this fork, build the image
+> yourself (`docker compose build`, or `docker build -t broadcast-box .`).
 
 ### Reverse proxies
 
-When serving the page over a reverse proxy, you must ensure that `http://<YOUR_IP>/api/sse` is unbuffered as it can otherwise cause a delay in receiving events until the buffer is flushed and cause issues with the video controls.
+`/api/sse` must not be buffered, or stream events and the video controls lag. In nginx:
 
-For example in nginx you would use the following configuration
-
-```
-    location /api/sse {
-        proxy_pass http://<YOUR_IP>:<PORT>;
-        # ... other configurations
-        proxy_buffering off;
-    }
+```nginx
+location /api/sse {
+    proxy_pass http://<YOUR_IP>:<PORT>;
+    # ... other configuration
+    proxy_buffering off;
+}
 ```
 
-## URL Parameters
-
-The frontend can be configured by passing these URL Parameters.
-
-- `cinemaMode=true` - Forces the player into cinema mode by adding to end of URL like https://b.siobud.com/myStream?cinemaMode=true
-
-## Environment Variables
-
-### Server Configuration
-
-| Variable                | Description                                                                                                  |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `APP_ENV`               | Set to `development` to load `.env.development` instead of `.env.production`.                                |
-| `HTTP_ADDRESS`          | Address for the main server to bind to. Used for HTTP, or HTTPS when certificates are configured.            |
-| `ENABLE_HTTP_REDIRECT`  | When set, enables automatic redirection from HTTP to HTTPS.                                                  |
-| `HTTPS_REDIRECT_PORT`   | Port to listen on for the HTTP-to-HTTPS redirect server.                                                     |
-| `NETWORK_TEST_ON_START` | If `true`, checks network connectivity on startup.                                                           |
-| `DISABLE_STATUS`        | When set, disables `/api/status`. Stream discovery and `/statistics` rely on this endpoint.                  |
-| `ENABLE_PROFILING`      | If `true`, enables PPROF profiling on `localhost:6060`.                                                      |
-
-### SSL Configuration
-
-| Variable   | Description                                                                                     |
-| ---------- | ----------------------------------------------------------------------------------------------- |
-| `SSL_CERT` | Path to the SSL certificate file. When set together with `SSL_KEY`, the Go server serves HTTPS. |
-| `SSL_KEY`  | Path to the SSL key file. When set together with `SSL_CERT`, the Go server serves HTTPS.       |
-
-### Authorization & Profiles
-
-| Variable                | Description                                                                                                                               |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `STREAM_PROFILE_PATH`   | Path to store stream profile configurations. Default is `profiles`.                                                                       |
-| `STREAM_PROFILE_POLICY` | Policy configuration for local reserved profiles. Default is `ANYONE_WITH_RESERVED`. See [Stream Profile Policy](#stream-profile-policy). |
-| `WEBHOOK_URL`           | URL for a webhook backend used to authorize/log publish (`WHIP`) and subscribe (`WHEP`) requests. See [Webhooks](#webhooks).            |
-
-### Frontend Configuration
-
-| Variable               | Description                                                                               |
-| ---------------------- | ----------------------------------------------------------------------------------------- |
-| `DISABLE_FRONTEND`     | Disables frontend asset serving and UI routes (`/`, `/publish`, `/statistics`, `/admin`). |
-| `FRONTEND_PATH`        | Path to built frontend assets. Defaults to `./web/build`.                                 |
-| `FRONTEND_ADMIN_TOKEN` | Enables `/admin` and defines the bearer token required to log in.                         |
-
-### WebRTC & Networking
-
-| Variable                             | Description                                                               |
-| ------------------------------------ | ------------------------------------------------------------------------- |
-| `INCLUDE_PUBLIC_IP_IN_NAT_1_TO_1_IP` | Automatically includes public IPs in NAT configuration.                   |
-| `NAT_1_TO_1_IP`                      | Manually specify IPs (like Public IP) to announce, delineated by `\|`     |
-| `INTERFACE_FILTER`                   | Restrict UDP traffic to a specific network interface.                     |
-| `NAT_ICE_CANDIDATE_TYPE`             | Set to `srflx` to append IPs instead of overriding with `NAT_1_TO_1_IP`.  |
-| `NETWORK_TYPES`                      | List of network types to use delineated by `\|` (e.g.,`udp4 \|udp6`).     |
-| `INCLUDE_LOOPBACK_CANDIDATE`         | Enables WebRTC traffic on loopback interface.                             |
-| `UDP_MUX_PORT`                       | Port to multiplex all UDP traffic. Uses random port by default.           |
-| `MAX_VIEWERS_PER_STREAM` | Maximum viewers per stream, further viewers get `503`. Unlimited when unset. |
-| `UDP_MUX_READ_BUFFER_SIZE` | Socket receive buffer size in bytes for the UDP mux. Default is `8388608` (8 MiB), capped by the kernel at `net.core.rmem_max`. |
-| `UDP_MUX_PORT_WHEP`                  | Port to multiplex WHEP traffic only.                                      |
-| `UDP_MUX_PORT_WHIP`                  | Port to multiplex WHIP traffic only.                                      |
-| `TCP_MUX_ADDRESS`                    | Address to serve WebRTC traffic over TCP.                                 |
-| `TCP_MUX_FORCE`                      | Forces WebRTC traffic to use TCP only.                                    |
-| `APPEND_CANDIDATE`                   | Appends ICE candidates not generated by the agent.                        |
-
-### STUN Servers
-
-| Variable       | Description                             |
-| -------------- | --------------------------------------- |
-| `STUN_SERVERS` | List of STUN servers separated by `\|`. |
-
-These values are parsed by the Go backend and applied to WHIP/WHEP `PeerConnection` configuration server-side. Clients do not fetch ICE server configuration from an API endpoint.
-
-### Debugging
-
-| Variable                     | Description                                 |
-| ---------------------------- | ------------------------------------------- |
-| `DEBUG_PRINT_OFFER`          | Prints WebRTC offers received from clients. |
-| `DEBUG_PRINT_ANSWER`         | Prints WebRTC answers sent to clients.      |
-| `DEBUG_INCOMING_API_REQUEST` | Logs incoming API request paths.            |
-| `DEBUG_PRINT_SSE_MESSAGES`   | Logs Server-Sent Events messages.           |
-
-### Logging
-
-| Variable                      | Description                                                                                               |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `LOGGING_ENABLED`             | Enables logging system.                                                                                   |
-| `LOGGING_LEVEL`               | Minimum slog level: `DEBUG`, `INFO`, `WARN`, or `ERROR`. Defaults to `INFO`.                              |
-| `LOGGING_DIRECTORY`           | Directory to store log files.                                                                             |
-| `LOGGING_SINGLEFILE`          | Logs everything into a single file called 'log'. Default is log files are stamped with current date.     |
-| `LOGGING_NEW_FILE_ON_STARTUP` | Creates a new log file on each startup. Either a new 'log' file, or replaces the current dates log file. |
-| `LOGGING_API_ENABLED`         | Enables logging API to show current log entries on the backend. `/api/log`                                |
-| `LOGGING_API_KEY`             | When set, the logging API requires a bearer token that uses this key.                                     |
-
-### Chat
-
-| Variable                | Description                                                    |
-| ----------------------- | -------------------------------------------------------------- |
-| `CHAT_MAX_HISTORY`      | Maximum number of chat messages retained per stream in memory. |
-| `CHAT_DEFAULT_TTL`      | How long idle chat sessions stay alive before they expire.     |
-| `CHAT_CLEANUP_INTERVAL` | How often expired chat sessions are cleaned up.                |
-
-Broadcast Box attaches a WebRTC data channel (`bb-chat-v1`) to WHIP/WHEP peer connections for simple per-stream
-chat state. The bundled frontend does not currently expose a chat UI, but you can connect from your own client.
-
-See [CONNECTING.md](internal/chat/CONNECTING.md) for the message contract and a minimal standalone client example.
-
-### Raw Data Channel
-
-Broadcast Box also accepts a raw WebRTC data channel (`bb-data-v1`) on WHIP/WHEP peer connections. Messages sent on
-this channel are broadcast as-is to other active peers on the same stream, excluding the sender. Text payloads stay
-text, binary payloads stay binary, and there is no persistent history.
-
-See [DATA_CHANNEL.md](internal/webrtc/sessions/session/DATA_CHANNEL.md) for setup details and text/binary examples.
-
-## CLI Flags
-
-The binary also supports a small local profile-management helper:
-
-- `-createNewProfile -streamKey <stream-key>` creates a new reserved profile in `STREAM_PROFILE_PATH`, prints the bearer token, and exits
-
-Example:
-
-```shell
-go run . -createNewProfile -streamKey MyStream
-```
-
-## Stream Profile Policy
-
-The `STREAM_PROFILE_POLICY` environment variable controls who is allowed to initiate streaming sessions based on profile reservation status.
-
-| Value                  | Description                                                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `ANYONE_WITH_RESERVED` | Reserved stream keys require a valid token. Unreserved stream keys may still be used by anyone.                    |
-| `RESERVED`             | Only users with a valid token **and** a reserved stream key are allowed to stream. This is the most restrictive mode. |
-
-Any other value currently falls back to `ANYONE_WITH_RESERVED` behavior.
-
-## Stream Notifications
-
-Broadcast Box can post a message to Discord (or any webhook that accepts a JSON `content`/`text`/`message` field, such as
-Slack or Mattermost) when a stream goes live, and update it when the stream ends.
-
-| Variable                      | Description                                                                                                                              |
-|-------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
-| `DISCORD_WEBHOOK_URL`         | Webhook to post notifications to. Notifications are disabled when unset.                                                               |
-| `PUBLIC_URL`                  | Public URL of the frontend, used to link to `<PUBLIC_URL>/<streamKey>`. When unset only the stream key is posted.                       |
-| `NOTIFY_OFFLINE_GRACE_PERIOD` | How long a stream may be disconnected before it is announced as ended, so encoder reconnects don't spam the channel. Default is `60s`. |
-| `NOTIFY_STREAM_KEYS`          | Optional comma separated list of stream keys to notify for. All streams are announced when unset.                                     |
-
-For Discord the original "live" message is edited to show the stream has ended, including its duration.
-
-## Clips
-
-The quality selector shows each simulcast layer with its detected resolution, frame rate and bitrate, e.g.
-`0 - 1080p @ 120fps, 12 Mb/s`.
-
-Viewers can clip the last minutes of a live stream. The scissors button in the player opens an editor with the recent
-part of the stream, where they pick a start and end and give the clip a title (the date and time when left empty).
-Published clips appear in the clips panel, opened with the film button next to the chat button.
-
-Each live stream keeps a rolling buffer of its best video layer and audio in memory, about 90 MB per minute at 12 Mbps.
-Clips start at the keyframe at or before the chosen start, so they always play, and are stored as
-`<streamKey>/<id>.mkv` with a `<id>.json` file holding the title and details. Deleting a clip requires the admin token or
-the token of the stream's profile. Clips are supported for H264, AV1, VP8 and VP9 video with Opus audio.
-
-Clip previews play in Chromium based browsers (Chrome, Edge, Brave, Opera). Firefox and Safari have limited Matroska
-support, viewers there can still create and download clips.
-
-| Variable               | Description                                                                                   |
-|------------------------|-----------------------------------------------------------------------------------------------|
-| `CLIP_STORAGE_PATH`    | Directory to store clips in. Enables clips.                                                   |
-| `CLIP_S3_BUCKET`       | S3 bucket to store clips in instead, enables clips. Works with any S3 compatible storage.     |
-| `CLIP_S3_ENDPOINT`     | S3 endpoint, e.g. `https://s3.eu-central-1.amazonaws.com`. Default is `s3.amazonaws.com`.      |
-| `CLIP_S3_ACCESS_KEY`   | S3 access key.                                                                                |
-| `CLIP_S3_SECRET_KEY`   | S3 secret key.                                                                                |
-| `CLIP_S3_REGION`       | S3 region.                                                                                    |
-| `CLIP_S3_PREFIX`       | Optional prefix for the object keys.                                                          |
-| `CLIP_BUFFER_DURATION` | How much of the stream can be clipped. Default is `2m`.                                       |
-| `CLIP_MAX_DURATION`    | Maximum clip length. Default is the buffer duration.                                          |
-| `CLIP_MAX_DRAFTS`      | Clip drafts kept at once, each is a temporary file of the whole buffer. Default is `10`.     |
-| `CLIP_DRAFT_PATH`      | Directory for clip drafts. Default is a directory in the system temp directory.              |
-
-## Chat Emotes and Reactions
-
-The chat has an emoji picker with every Unicode emoji, emotes and GIFs. The 50 emojis, emotes and GIFs a viewer uses
-most are remembered in their browser and shown first.
-
-Clicking the reaction button sends the selected reaction, holding it opens a picker to choose any emoji or emote as
-reaction. Reactions are counted by the server and sent to all viewers four times per second, so they scale with the
-number of viewers.
-
-Chat shows emotes from Twitch, 7TV, BetterTTV and FrankerFaceZ. The server fetches the global emotes and the emotes of
-a Twitch channel, caches them for 30 minutes and gives viewers one merged list. The emote picker can also search all of
-7TV, BetterTTV and FrankerFaceZ; emotes used from a search are sent along with the message so every viewer sees them.
-
-Twitch's own emotes (subscriber emotes of the channel and globals like Kappa) need a Twitch application: create one at
-[dev.twitch.tv/console](https://dev.twitch.tv/console) (any OAuth redirect URL, e.g. `http://localhost`) and set its
-client ID and secret.
-
-GIF links are shown as images when they come from a host in `CHAT_GIF_HOSTS`. Picking a GIF sends it right away, and
-the GIF tab keeps the 50 GIFs each viewer uses most.
-
-The GIF tab can search your own [Slink](https://github.com/andrii-kryvoviaz/slink) servers, listed in `SLINK_INSTANCES`
-(`gifs.example.com` or `https://gifs.example.com`, comma separated). It shows their newest images when the search is
-empty and searches them while typing; their hosts are allowed in chat automatically. No API key is needed: the search
-uses Slink's public image list, Slink API keys only allow uploading. Each Slink server needs guest access
-(`USER_ALLOW_UNAUTHENTICATED_ACCESS=true`) and only its public images are found. Slink searches image descriptions and
-uploader names, not file names, so give your GIFs a description.
-
-With a Giphy API key ([developers.giphy.com](https://developers.giphy.com/dashboard/), free keys allow 100 requests per
-hour) viewers can also search Giphy by pressing Enter. Results are cached for an hour, and the server stops asking Giphy
-after `GIPHY_HOURLY_LIMIT` searches in an hour, so the key is never blocked. Giphy's hosts are allowed automatically.
-
-[KLIPY](https://klipy.com) works the same way: set `KLIPY_API_KEY` (free at [partner.klipy.com](https://partner.klipy.com/api-keys))
-and pressing Enter searches Giphy and KLIPY together, each with its own hourly limit (`KLIPY_HOURLY_LIMIT`). KLIPY's
-GIFs come from `static.klipy.com`, which is then allowed in chat automatically.
-
-Links to a GIF's web page (`https://klipy.com/gifs/...`, `https://giphy.com/gifs/...`) can be pasted in the GIF tab too:
-the server looks up the GIF file behind them. KLIPY pages are read from their preview tags, with KLIPY's search as a
-fallback when `KLIPY_API_KEY` is set.
-
-| Variable                 | Description                                                                                                           |
-|--------------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `CHAT_EMOTE_PROVIDERS`   | Comma separated emote providers: `7tv`, `bttv` and/or `ffz`. Twitch is added when its credentials are set.          |
-| `CHAT_EMOTES_TWITCH_IDS` | Numeric Twitch user ID whose channel emotes to show, for all streams (`12345`) or per stream key (`key:12345,...`). |
-| `TWITCH_CLIENT_ID`       | Client ID of a Twitch application, enables Twitch channel and global emotes.                                         |
-| `TWITCH_CLIENT_SECRET`   | Client secret of that Twitch application.                                                                             |
-| `CHAT_GIF_HOSTS`         | Comma separated hosts whose image links are shown in chat. `*.example.com` allows a domain and all its subdomains, `*` any https host. |
-| `SLINK_INSTANCES`        | Comma separated Slink servers to search for GIFs, e.g. `gifs.example.com,other.example.com`.                          |
-| `GIPHY_API_KEY`          | Giphy API key, enables Giphy search when a viewer presses Enter.                                                      |
-| `GIPHY_HOURLY_LIMIT`     | Most Giphy searches the server makes per hour. Default is `90`.                                                        |
-| `KLIPY_API_KEY`          | KLIPY API key, enables KLIPY search when a viewer presses Enter.                                                      |
-| `KLIPY_HOURLY_LIMIT`     | Most KLIPY searches the server makes per hour. Default is `100`.                                                       |
-| `GIF_CONTENT_RATING`     | Highest content rating for Giphy and KLIPY search: `g`, `pg`, `pg-13` or `r`. Default is `pg-13`.                    |
-
-## Social Stream Ninja
-
-Chat messages can be forwarded to [Social Stream Ninja](https://github.com/steveseguin/social_stream), so Broadcast Box
-chat shows up next to your other platforms. Messages are sent as `extContent` through the SSN API server, with the stream
-key as `sourceName`. Messages sent while the connection to SSN is down are queued and delivered on reconnect.
-
-| Variable          | Description                                                                                       |
-|-------------------|---------------------------------------------------------------------------------------------------|
-| `SSN_SESSION_ID`  | Your SSN session ID. Forwarding is disabled when unset.                                           |
-| `SSN_STREAM_KEYS` | Comma separated list of stream keys whose chat is forwarded. All chat is forwarded when unset.    |
-| `SSN_VERBOSE`     | Log every forwarded message.                                                                      |
-
-## Webhooks
-
-When `WEBHOOK_URL` is set Broadcast Box sends a webhook for every publish and subscribe. If this webhook is rejected the video session is disconnected.
-
-The webhook payload includes:
-
-- `action` (`whip-connect` for publishers, `whep-connect` for viewers)
-- `bearerToken`
-- `queryParams`
-- `ip`
-- `userAgent`
-
-The webhook must return HTTP `200 OK` with a JSON body like `{ "streamKey": "YourResolvedStreamKey" }`.
-Any other status code rejects the session.
-
-This enables you to implement authorization or logging for broadcasting (WHIP) and subscribing (WHEP) independently.
-
-See [here](examples/webhook-server/main.go). For an example Webhook Server that only allows the stream `broadcastBoxRulez`
-
-For a more advanced example of a webhook server implementation making use of separating the key for streaming from the key for watching, see the [broadcastbox-webhookserver](https://github.com/chrisingenhaag/broadcastbox-webhookserver) repository.
-
-
-## Network Test on Start
-
-When running in Docker Broadcast Box runs a network tests on startup. This tests that WebRTC traffic can be established
-against your server. If you server is misconfigured Broadcast Box will not start.
-
-If the network test is enabled this will be printed on startup
+---
+
+## ⚙️ Configuration Reference
+
+All settings are environment variables. Set them in `.env` (with Docker Compose) or in `.env.production`.
+
+<details>
+<summary>🖥️ <b>Server</b></summary>
+
+| Variable | Description |
+|---|---|
+| `APP_ENV` | `development` loads `.env.development` instead of `.env.production`. |
+| `HTTP_ADDRESS` | Address the server listens on. Default `:8080`. HTTPS when certificates are set. |
+| `ENABLE_HTTP_REDIRECT` | Redirect HTTP to HTTPS. |
+| `HTTPS_REDIRECT_PORT` | Port for the HTTP-to-HTTPS redirect. |
+| `NETWORK_TEST_ON_START` | `true` runs a [network test](#-network-test-on-start) at startup. |
+| `DISABLE_STATUS` | Disables `/api/status`. Stream listing and `/statistics` need it. |
+| `ENABLE_PROFILING` | `true` enables pprof on `localhost:6060`. |
+| `SSL_CERT` / `SSL_KEY` | Certificate and key files. When both are set, the server serves HTTPS. |
+
+</details>
+
+<details>
+<summary>🔐 <b>Authorization and frontend</b></summary>
+
+| Variable | Description |
+|---|---|
+| `STREAM_PROFILE_PATH` | Folder for stream profiles. Default `profiles`. |
+| `STREAM_PROFILE_POLICY` | `ANYONE_WITH_RESERVED` (default) or `RESERVED`. See [Stream profiles](#️-stream-profiles). |
+| `WEBHOOK_URL` | Webhook that authorizes broadcasters and viewers. See [Webhooks](#-webhooks). |
+| `FRONTEND_ADMIN_TOKEN` | Enables `/admin`, logging in with this token. Also allows deleting clips. |
+| `DISABLE_FRONTEND` | Serve only the API, no web pages. |
+| `FRONTEND_PATH` | Folder with the built frontend. Default `./web/build`. |
+
+</details>
+
+<details>
+<summary>💬 <b>Chat, emotes and GIFs</b></summary>
+
+| Variable | Description |
+|---|---|
+| `CHAT_MAX_HISTORY` | Chat messages kept per stream. |
+| `CHAT_DEFAULT_TTL` | How long an idle chat stays alive. |
+| `CHAT_CLEANUP_INTERVAL` | How often expired chats are cleaned up. |
+| `CHAT_EMOTE_PROVIDERS` | Emote providers: `7tv`, `bttv` and/or `ffz`, comma separated. Twitch is added when set up. |
+| `CHAT_EMOTES_TWITCH_IDS` | Twitch user ID for channel emotes: `12345678` for all streams, or `key:12345678,...` per stream. |
+| `TWITCH_CLIENT_ID` | Client ID of a Twitch application, for Twitch emotes. |
+| `TWITCH_CLIENT_SECRET` | Client secret of that Twitch application. |
+| `CHAT_GIF_HOSTS` | Extra hosts whose GIF links are shown in chat, comma separated. `*.example.com` includes subdomains, `*` allows any https host. |
+| `SLINK_INSTANCES` | Your Slink servers to search for GIFs, comma separated. |
+| `GIPHY_API_KEY` | GIPHY API key, enables GIPHY search on Enter. |
+| `GIPHY_HOURLY_LIMIT` | Most GIPHY searches per hour. Default `90`. |
+| `KLIPY_API_KEY` | KLIPY API key, enables KLIPY search on Enter. |
+| `KLIPY_HOURLY_LIMIT` | Most KLIPY searches per hour. Default `100`. |
+| `GIF_CONTENT_RATING` | Highest rating for GIPHY and KLIPY results: `g`, `pg`, `pg-13` or `r`. Default `pg-13`. |
+
+</details>
+
+<details>
+<summary>✂️ <b>Clips</b></summary>
+
+| Variable | Description |
+|---|---|
+| `CLIP_STORAGE_PATH` | Folder to store clips in. Enables clips. |
+| `CLIP_S3_BUCKET` | S3 bucket to store clips in instead. Enables clips. |
+| `CLIP_S3_ENDPOINT` | S3 endpoint. Default `s3.amazonaws.com`. |
+| `CLIP_S3_ACCESS_KEY` | S3 access key. |
+| `CLIP_S3_SECRET_KEY` | S3 secret key. |
+| `CLIP_S3_REGION` | S3 region. |
+| `CLIP_S3_PREFIX` | Optional prefix for the clip files in the bucket. |
+| `CLIP_S3_USE_SSL` | `false` to connect to S3 without TLS, e.g. a local MinIO. Default `true`. |
+| `CLIP_BUFFER_DURATION` | How much of the stream can be clipped. Default `2m`. |
+| `CLIP_MAX_DURATION` | Longest allowed clip. Default the buffer duration. |
+| `CLIP_MAX_DRAFTS` | Clip drafts kept at once, each a temporary file of the whole buffer. Default `10`. |
+| `CLIP_DRAFT_PATH` | Folder for clip drafts. Default a folder in the system's temp folder. |
+
+</details>
+
+<details>
+<summary>🔔 <b>Notifications and Social Stream Ninja</b></summary>
+
+| Variable | Description |
+|---|---|
+| `DISCORD_WEBHOOK_URL` | Webhook for live/ended messages. Notifications are off when empty. |
+| `PUBLIC_URL` | Public address of your site, for the watch link. Without it only the stream key is posted. |
+| `NOTIFY_OFFLINE_GRACE_PERIOD` | How long a stream may be offline before it's announced as ended. Default `60s`. |
+| `NOTIFY_STREAM_KEYS` | Stream keys to announce, comma separated. All streams when empty. |
+| `SSN_SESSION_ID` | Social Stream Ninja session ID. Forwarding is off when empty. |
+| `SSN_STREAM_KEYS` | Stream keys whose chat is forwarded, comma separated. All when empty. (`WATCH_STREAM_KEY` still works too.) |
+| `SSN_VERBOSE` | `true` logs every forwarded message. |
+
+</details>
+
+<details>
+<summary>🌐 <b>WebRTC and networking</b></summary>
+
+| Variable | Description |
+|---|---|
+| `UDP_MUX_PORT` | One UDP port for all WebRTC traffic. Random ports when unset. |
+| `UDP_MUX_PORT_WHIP` | UDP port for broadcasters only. |
+| `UDP_MUX_PORT_WHEP` | UDP port for viewers only. |
+| `UDP_MUX_READ_BUFFER_SIZE` | UDP receive buffer in bytes. Default `8388608` (8 MiB), capped by `net.core.rmem_max`. |
+| `MAX_VIEWERS_PER_STREAM` | Most viewers per stream, more get `503`. Unlimited when unset. |
+| `NAT_1_TO_1_IP` | IPs to announce (like your public IP), separated by `\|`. |
+| `INCLUDE_PUBLIC_IP_IN_NAT_1_TO_1_IP` | Detect and announce your public IP. |
+| `NAT_ICE_CANDIDATE_TYPE` | `srflx` adds the IPs above instead of replacing the detected ones. |
+| `INTERFACE_FILTER` | Only use this network interface. |
+| `NETWORK_TYPES` | Network types to use, separated by `\|`, e.g. `udp4\|udp6`. |
+| `INCLUDE_LOOPBACK_CANDIDATE` | Also use the loopback interface. |
+| `TCP_MUX_ADDRESS` | Address to serve WebRTC over TCP. |
+| `TCP_MUX_FORCE` | Only use TCP for WebRTC. |
+| `APPEND_CANDIDATE` | Extra ICE candidates to announce. |
+| `STUN_SERVERS` | STUN servers, separated by `\|`. Used by the server's own WebRTC connections. |
+
+</details>
+
+<details>
+<summary>📜 <b>Logging and debugging</b></summary>
+
+| Variable | Description |
+|---|---|
+| `LOGGING_ENABLED` | Write logs to files. |
+| `LOGGING_LEVEL` | `DEBUG`, `INFO` (default), `WARN` or `ERROR`. |
+| `LOGGING_DIRECTORY` | Folder for log files. |
+| `LOGGING_SINGLEFILE` | Log to one file called `log` instead of one file per day. |
+| `LOGGING_NEW_FILE_ON_STARTUP` | Start a new log file at every startup. |
+| `LOGGING_API_ENABLED` | Enables `/api/log` with the current log. |
+| `LOGGING_API_KEY` | Bearer token required for `/api/log`. |
+| `DEBUG_PRINT_OFFER` | Print WebRTC offers from clients. |
+| `DEBUG_PRINT_ANSWER` | Print WebRTC answers to clients. |
+| `DEBUG_INCOMING_API_REQUEST` | Log incoming API request paths. |
+| `DEBUG_PRINT_SSE_MESSAGES` | Log server-sent events. |
+
+</details>
+
+---
+
+## 🧪 Network Test on Start
+
+With `NETWORK_TEST_ON_START=true`, Broadcast Box checks at startup that WebRTC traffic can reach your server, and
+exits if it can't:
 
 ```console
 NETWORK_TEST_ON_START is enabled. If the test fails Broadcast Box will exit.
 See the README.md for how to debug or disable NETWORK_TEST_ON_START
 ```
 
-If the test passed you will see
+✅ When it passes:
 
 ```console
 Network Test passed.
 Have fun using Broadcast Box
 ```
 
-If the test failed you will see the following. The middle sentence will change depending on the error.
+❌ When it fails (the middle line explains why):
 
 ```console
 Network Test failed.
@@ -552,48 +700,111 @@ Network Test client reported nothing in 30 seconds
 Please see the README and join Discord for help
 ```
 
-[Join the Discord][discord-invite-url] and we are ready to help! To debug check the following.
+To debug, check:
 
-- Have you allowed UDP traffic?
-- Do you have any restrictions on ports?
-- Is your server publicly accessible?
+- Is UDP traffic allowed through your firewall?
+- Are there restrictions on ports?
+- Is your server reachable from the internet?
 
-If you wish to disable the test set the environment variable `NETWORK_TEST_ON_START` to false.
+[Join the Discord][discord-invite-url] if you're stuck. To skip the test, set `NETWORK_TEST_ON_START=false`.
 
-## Design
+---
 
-The backend exposes the following endpoints to support WebRTC streaming and server-side monitoring:
+## 🧩 API Reference
 
-| Endpoint                             | Description                                                                                                                            |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/whip`                          | Initiates a WHIP session for broadcasting via WebRTC. Requires an `Authorization: Bearer <token>` header.                              |
-| `/api/whip/{sessionID}`              | `PATCH` handles WHIP trickle ICE for an existing session and `DELETE` closes it. Requires the same bearer token.                       |
-| `/api/whip/profile`                  | `GET`/`POST` endpoint for reading or updating the reserved profile (MOTD/privacy) associated with the supplied bearer token.           |
-| `/api/whep`                          | Initiates a WHEP session for playback via WebRTC. Requires an `Authorization: Bearer <streamKey>` header.                              |
-| `/api/whep/{sessionID}`              | `PATCH` handles WHEP trickle ICE for an existing playback session.                                                                     |
-| `/api/sse/{sessionID}`               | Server-sent events for stream status and available layers.                                                                             |
-| `/api/layer/{sessionID}`             | Switches audio/video layers for a WHEP session.                                                                                        |
-| `/api/status`                        | Returns the status of all active public WHIP streams. Pass `?key=<streamKey>` to fetch one active stream by key.                       |
-| `/api/log`                           | Returns the current log file when `LOGGING_API_ENABLED=TRUE`. If `LOGGING_API_KEY` is set, this endpoint also requires a bearer token. |
-| `/api/admin/login`                   | Validates the admin bearer token configured in `FRONTEND_ADMIN_TOKEN`.                                                                 |
-| `/api/admin/status`                  | Returns full session state for the admin UI, including private streams.                                                                |
-| `/api/admin/profiles`                | Lists configured stream profiles for the admin UI.                                                                                     |
-| `/api/admin/profiles/add-profile`    | Creates a new stream profile.                                                                                                          |
-| `/api/admin/profiles/remove-profile` | Removes an existing stream profile.                                                                                                    |
-| `/api/admin/profiles/reset-token`    | Rotates the token for an existing stream profile.                                                                                      |
-| `/api/admin/logging`                 | Returns the current log file for the admin UI.                                                                                         |
+<details>
+<summary>📺 <b>Streaming</b></summary>
 
-All `/api/admin/*` endpoints require the `FRONTEND_ADMIN_TOKEN` bearer token.
+| Endpoint | Description |
+|---|---|
+| `/api/whip` | Start broadcasting (WHIP). Needs `Authorization: Bearer <token>`. |
+| `/api/whip/{sessionID}` | `PATCH` for trickle ICE, `DELETE` to stop. Same bearer token. |
+| `/api/whip/profile` | `GET`/`POST` the profile (message of the day, public/private) of the bearer token. |
+| `/api/whep` | Start watching (WHEP). Needs `Authorization: Bearer <streamKey>`. |
+| `/api/whep/{sessionID}` | `PATCH` for trickle ICE. |
+| `/api/sse/{sessionID}` | Server-sent events with stream status and available layers. |
+| `/api/layer/{sessionID}` | Switch the quality layer of a viewer. |
+| `/api/status` | Active public streams. `?key=<streamKey>` for one stream. |
 
-The frontend ships the following browser routes:
+</details>
 
-| Route                  | Description                                                                                   |
-| ---------------------- | --------------------------------------------------------------------------------------------- |
-| `/`                    | Home page for joining an existing stream or navigating to browser publishing.                 |
-| `/publish/{streamKey}` | Browser publisher for screen/webcam streaming and reserved profile settings.                  |
-| `/statistics`          | Live stream and subscriber statistics derived from `/api/status`.                             |
-| `/admin`               | Admin portal for status, profiles, and log viewing when `FRONTEND_ADMIN_TOKEN` is set.        |
-| `/{streamKey}`         | Player page for a stream. The built-in UI can add more streams to create a multi-view layout. |
+<details>
+<summary>💬 <b>Chat</b></summary>
+
+| Endpoint | Description |
+|---|---|
+| `/api/chat/emotes?key=<streamKey>` | The stream's emotes, allowed GIF hosts and configured GIF sources. |
+| `/api/chat/emotes/search?q=<query>` | Search 7TV, BetterTTV and FrankerFaceZ. |
+| `/api/chat/gifs/search?q=<query>[&apis]` | Search the Slink servers, and GIPHY and KLIPY with `apis`. |
+| `/api/chat/gifs/resolve?url=<link>` | The GIF file behind a KLIPY or GIPHY page link. |
+
+Chat messages themselves travel over the `bb-chat-v1` WebRTC data channel, see
+[CONNECTING.md](internal/chat/CONNECTING.md). A raw `bb-data-v1` channel is also available for your own messages, see
+[DATA_CHANNEL.md](internal/webrtc/sessions/session/DATA_CHANNEL.md).
+
+</details>
+
+<details>
+<summary>✂️ <b>Clips</b></summary>
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/clips/config` | Clip settings, `{"enabled": false}` when clips are off. |
+| `GET /api/clips?key=<streamKey>` | Published clips of a stream, newest first. |
+| `POST /api/clips/drafts?key=<streamKey>` | Save the stream's clip buffer as a draft. |
+| `GET /api/clips/drafts/{id}` | A draft's video, for the editor. |
+| `POST /api/clips/drafts/{id}/publish` | Publish a draft: `{"start", "end", "title"}`. |
+| `GET /api/clips/{streamKey}/{id}` | A clip's video, `?download` to download it. |
+| `DELETE /api/clips/{streamKey}/{id}` | Delete a clip. Needs the admin token or the stream profile's token. |
+
+</details>
+
+<details>
+<summary>🛡️ <b>Admin and logging</b></summary>
+
+All `/api/admin/*` endpoints need the `FRONTEND_ADMIN_TOKEN` bearer token.
+
+| Endpoint | Description |
+|---|---|
+| `/api/admin/login` | Check the admin token. |
+| `/api/admin/status` | Full session state, including private streams. |
+| `/api/admin/profiles` | List stream profiles. |
+| `/api/admin/profiles/add-profile` | Create a stream profile. |
+| `/api/admin/profiles/remove-profile` | Remove a stream profile. |
+| `/api/admin/profiles/reset-token` | Give a stream profile a new token. |
+| `/api/admin/logging` | The current log file. |
+| `/api/log` | The current log file, when `LOGGING_API_ENABLED=TRUE` (with `LOGGING_API_KEY` as bearer token if set). |
+
+</details>
+
+<details>
+<summary>🗺️ <b>Web pages</b></summary>
+
+| Route | Description |
+|---|---|
+| `/` | Home page: join a stream or start broadcasting. |
+| `/{streamKey}` | Player with chat, reactions and clips. Add more streams for multi-view. |
+| `/publish/{streamKey}` | Broadcast from the browser. |
+| `/statistics` | Live statistics of all public streams. |
+| `/admin` | Admin portal, when `FRONTEND_ADMIN_TOKEN` is set. |
+
+</details>
+
+### 📚 Examples
+
+- [simple-watcher.html](./examples/simple-watcher.html): a minimal WHEP viewer without any framework.
+- [dynamic-watcher.html](./examples/dynamic-watcher.html): polls `/api/status` and opens a viewer for every stream.
+- [gstreamer-broadcast.sh](./examples/gstreamer-broadcast.sh): broadcast with GStreamer.
+- [gstreamer-whep-to-rtmp.sh](./examples/gstreamer-whep-to-rtmp.sh): watch over WHEP and restream to RTMP.
+- [webhook-server/main.go](./examples/webhook-server/main.go): a simple webhook authorization server.
+- [recording/main.go](./examples/recording/main.go): a webhook-driven recorder that writes `.ogg` and `.h264` files.
+
+---
+
+## 🤝 Contributing
+
+Want to help build Broadcast Box? See [CONTRIBUTING.md](./CONTRIBUTING.md), and come say hi on
+[Discord][discord-invite-url]! 💜
 
 [license-image]: https://img.shields.io/badge/License-MIT-yellow.svg
 [license-url]: https://opensource.org/licenses/MIT
